@@ -12,84 +12,162 @@ interface UserProfile {
   created_at: string
 }
 
+interface DepositRecord {
+  id: string
+  account_type: string
+  amount: number
+  utr_number: string
+  status: string
+  created_at: string
+}
+
+interface WithdrawalRecord {
+  id: string
+  amount: number
+  bank_account_info: string
+  status: string
+  created_at: string
+}
+
+interface BankAccount {
+  id?: string
+  bank_name: string
+  account_number: string
+  ifsc_code: string
+  holder_name: string
+}
+
 export default function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'auth' | 'team' | 'profile'>('home')
-  const [authTab, setAuthTab] = useState<'login' | 'signup'>('login')
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [initialLoading, setInitialLoading] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [isDownloading, setIsDownloading] = useState(false)
 
-  // Auth Inputs
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [inviteCode, setInviteCode] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe] = useState(true)
+  // Navigation State
+  const [activeTab, setActiveTab] = useState<'home' | 'transactions' | 'profile'>('home')
+  const [subScreen, setSubScreen] = useState<'none' | 'sms' | 'withdraw' | 'deposit' | 'bank_setup' | 'change_password'>('none')
 
-  // Status Alerts
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  // Front Auth State
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPhone, setAuthPhone] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authConfirmPassword, setAuthConfirmPassword] = useState('')
+  const [authInviteCode, setAuthInviteCode] = useState('')
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [authSuccess, setAuthSuccess] = useState<string | null>(null)
 
-  // Download APK Handler matching tirangapaypanel.in
-  const handleDownloadAPK = () => {
-    setIsDownloading(true)
-    const apkLink = 'https://apk.tirangapayofficial.workers.dev/'
-    const a = document.createElement('a')
-    a.href = apkLink
-    a.download = 'Tiranga_Pay.apk'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+  // SMS Forwarder State (Photo 1)
+  const [forwardSms, setForwardSms] = useState(false)
+  const [autoStartup, setAutoStartup] = useState(true)
+  const [batteryOptimization, setBatteryOptimization] = useState(true)
+  const [hideRecentApps, setHideRecentApps] = useState(false)
+  const [bankRegPhone, setBankRegPhone] = useState('6206762421')
 
-    setTimeout(() => {
-      setIsDownloading(false)
-    }, 2000)
+  // Security Deposit State (Photos 4 & 5)
+  const [depositTier, setDepositTier] = useState<'savings' | 'current' | 'corporate'>('savings')
+  const [paymentMode, setPaymentMode] = useState<'upi' | 'bank'>('upi')
+  const [utrNumber, setUtrNumber] = useState('')
+  const [selectedFileName, setSelectedFileName] = useState('No file chosen')
+  const [depositMsg, setDepositMsg] = useState<string | null>(null)
+  const [depositsList, setDepositsList] = useState<DepositRecord[]>([])
+
+  // Withdrawal State (Photo 2)
+  const [withdrawAmount, setWithdrawAmount] = useState('')
+  const [withdrawPassword, setWithdrawPassword] = useState('')
+  const [userBank, setUserBank] = useState<BankAccount | null>(null)
+  const [withdrawMsg, setWithdrawMsg] = useState<string | null>(null)
+  const [withdrawalsList, setWithdrawalsList] = useState<WithdrawalRecord[]>([])
+
+  // Bank Form State
+  const [newBankName, setNewBankName] = useState('')
+  const [newAccNumber, setNewAccNumber] = useState('')
+  const [newIfsc, setNewIfsc] = useState('')
+  const [newHolderName, setNewHolderName] = useState('')
+
+  // Toast / Copy helper
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg)
+    setTimeout(() => setToastMsg(null), 2500)
   }
 
-  // Load profile from Supabase
-  const loadProfile = async (userId: string, userEmail?: string) => {
+  // Load User Data from Supabase
+  const loadUserData = async (userId: string, email?: string) => {
     try {
-      const { data } = await supabase
+      // 1. Profile
+      const { data: prof } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle()
 
-      if (data) {
-        setProfile(data)
+      if (prof) {
+        setProfile(prof)
+        if (prof.phone) setBankRegPhone(prof.phone.replace('+91', '').trim())
       } else {
-        const fallback = {
+        const initial = {
           id: userId,
-          email: userEmail || '',
+          email: email || '',
+          phone: '+916206762421',
           wallet_balance: 0.00,
           reward_points: 100,
           created_at: new Date().toISOString()
         }
-        await supabase.from('profiles').upsert(fallback)
-        setProfile(fallback as UserProfile)
+        await supabase.from('profiles').upsert(initial)
+        setProfile(initial as UserProfile)
       }
+
+      // 2. Bank Accounts
+      const { data: bankData } = await supabase
+        .from('user_banks')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (bankData && bankData.length > 0) {
+        setUserBank(bankData[0])
+      }
+
+      // 3. Deposits
+      const { data: depData } = await supabase
+        .from('deposits')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+
+      if (depData) setDepositsList(depData)
+
+      // 4. Withdrawals
+      const { data: withData } = await supabase
+        .from('withdrawals')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+
+      if (withData) setWithdrawalsList(withData)
     } catch (err) {
-      console.error('Failed to sync profile from Supabase:', err)
+      console.error('Error fetching Supabase user data:', err)
     }
   }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
-      if (currentUser) {
-        loadProfile(currentUser.id, currentUser.email)
+      const cur = session?.user ?? null
+      setUser(cur)
+      if (cur) {
+        loadUserData(cur.id, cur.email)
       }
+      setInitialLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
-      if (currentUser) {
-        loadProfile(currentUser.id, currentUser.email)
+      const cur = session?.user ?? null
+      setUser(cur)
+      if (cur) {
+        loadUserData(cur.id, cur.email)
       } else {
         setProfile(null)
       }
@@ -98,21 +176,22 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  const handleLogin = async (e: FormEvent) => {
+  // Front Auth: Login
+  const handleFrontLogin = async (e: FormEvent) => {
     e.preventDefault()
-    setErrorMsg(null)
-    setSuccessMsg(null)
+    setAuthError(null)
+    setAuthSuccess(null)
 
-    if (!email.trim() || !password) {
-      setErrorMsg('Please enter email and password.')
+    if (!authEmail.trim() || !authPassword) {
+      setAuthError('Please fill in both email and password.')
       return
     }
 
     try {
       setLoading(true)
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password,
+        email: authEmail.trim(),
+        password: authPassword
       })
 
       if (error) throw error
@@ -120,935 +199,1447 @@ export default function App() {
       if (data.user) {
         setUser(data.user)
         await supabase.from('profiles').update({ last_login_at: new Date().toISOString() }).eq('id', data.user.id)
-        await loadProfile(data.user.id, data.user.email)
-        setSuccessMsg('Logged in successfully!')
-        setCurrentView('profile')
+        await loadUserData(data.user.id, data.user.email)
+        setAuthSuccess('Welcome back!')
+        setActiveTab('home')
       }
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Login failed')
+      setAuthError(err instanceof Error ? err.message : 'Invalid credentials')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSignup = async (e: FormEvent) => {
+  // Front Auth: Sign Up
+  const handleFrontSignup = async (e: FormEvent) => {
     e.preventDefault()
-    setErrorMsg(null)
-    setSuccessMsg(null)
+    setAuthError(null)
+    setAuthSuccess(null)
 
-    if (!email.trim() || !password) {
-      setErrorMsg('Please provide your email and password.')
+    if (!authEmail.trim() || !authPassword) {
+      setAuthError('Email and password are required.')
       return
     }
 
-    if (password.length < 6) {
-      setErrorMsg('Password must be at least 6 characters.')
+    if (authPassword.length < 6) {
+      setAuthError('Password must be at least 6 characters.')
       return
     }
 
-    if (password !== confirmPassword) {
-      setErrorMsg('Passwords do not match.')
+    if (authPassword !== authConfirmPassword) {
+      setAuthError('Passwords do not match.')
       return
     }
 
     try {
       setLoading(true)
-      const cleanPhone = phone.trim()
-      const cleanInvite = inviteCode.trim().toUpperCase()
+      const cleanPhone = authPhone.trim() ? (authPhone.startsWith('+91') ? authPhone.trim() : `+91${authPhone.trim()}`) : '+916206762421'
+      const cleanInvite = authInviteCode.trim().toUpperCase()
 
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password,
+        email: authEmail.trim(),
+        password: authPassword,
         options: {
           data: {
-            phone: cleanPhone || null,
-            invite_code: cleanInvite || null,
-          },
-        },
+            phone: cleanPhone,
+            invite_code: cleanInvite || null
+          }
+        }
       })
 
       if (error) throw error
 
       if (data.user) {
-        const payload = {
+        const newProf = {
           id: data.user.id,
           email: data.user.email,
-          phone: cleanPhone || null,
+          phone: cleanPhone,
           invite_code: cleanInvite || null,
           wallet_balance: 0.00,
           reward_points: 100,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }
-        await supabase.from('profiles').upsert(payload)
+        await supabase.from('profiles').upsert(newProf)
         setUser(data.user)
-        setProfile(payload as UserProfile)
-        setSuccessMsg('Account registered & saved in Supabase!')
-        setCurrentView('profile')
+        setProfile(newProf as UserProfile)
+        setAuthSuccess('Account registered & saved in Supabase!')
+        setActiveTab('home')
       }
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Registration failed')
+      setAuthError(err instanceof Error ? err.message : 'Registration failed')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSignOut = async () => {
-    setLoading(true)
+  // Deposit Submission (Photos 4 & 5)
+  const handleSubmitDeposit = async (e: FormEvent) => {
+    e.preventDefault()
+    setDepositMsg(null)
+
+    if (!user) return
+
+    if (!utrNumber.trim() || utrNumber.trim().length < 8) {
+      setDepositMsg('Please enter a valid 12-digit UTR transaction number.')
+      return
+    }
+
+    const tierAmounts = {
+      savings: 2000,
+      current: 5000,
+      corporate: 15000
+    }
+    const depositAmt = tierAmounts[depositTier]
+
+    try {
+      setLoading(true)
+      const { data, error } = await supabase.from('deposits').insert([
+        {
+          user_id: user.id,
+          account_type: `${depositTier.toUpperCase()} ACCOUNT`,
+          amount: depositAmt,
+          utr_number: utrNumber.trim(),
+          payment_slip_url: selectedFileName !== 'No file chosen' ? selectedFileName : 'slip_uploaded.png',
+          status: 'pending'
+        }
+      ]).select()
+
+      if (error) throw error
+
+      showToast('Deposit details submitted successfully!')
+      setDepositMsg('Payment proof submitted! Deposit verification is under review.')
+      setUtrNumber('')
+      setSelectedFileName('No file chosen')
+
+      if (data) {
+        setDepositsList(prev => [data[0], ...prev])
+      }
+    } catch (err: unknown) {
+      setDepositMsg(err instanceof Error ? err.message : 'Deposit submission failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Withdrawal Submission (Photo 2)
+  const handleSubmitWithdrawal = async (e: FormEvent) => {
+    e.preventDefault()
+    setWithdrawMsg(null)
+
+    if (!user) return
+
+    const amt = parseFloat(withdrawAmount)
+    if (isNaN(amt) || amt < 500) {
+      setWithdrawMsg('Minimum withdrawal amount is ₹500.')
+      return
+    }
+
+    if (!userBank) {
+      setWithdrawMsg('Please setup and link your receiving bank account first.')
+      return
+    }
+
+    if (!withdrawPassword) {
+      setWithdrawMsg('Please enter your account security password.')
+      return
+    }
+
+    try {
+      setLoading(true)
+      const bankInfo = `${userBank.bank_name} - A/C ${userBank.account_number.slice(-4)} (${userBank.holder_name})`
+      const { data, error } = await supabase.from('withdrawals').insert([
+        {
+          user_id: user.id,
+          amount: amt,
+          bank_account_info: bankInfo,
+          status: 'pending'
+        }
+      ]).select()
+
+      if (error) throw error
+
+      showToast('Withdrawal request submitted!')
+      setWithdrawMsg('Withdrawal request placed successfully! Status: Under Review.')
+      setWithdrawAmount('')
+      setWithdrawPassword('')
+
+      if (data) {
+        setWithdrawalsList(prev => [data[0], ...prev])
+      }
+    } catch (err: unknown) {
+      setWithdrawMsg(err instanceof Error ? err.message : 'Withdrawal submission failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Bank Setup Submission
+  const handleSaveBank = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+
+    if (!newBankName || !newAccNumber || !newIfsc || !newHolderName) {
+      alert('Please fill all bank details.')
+      return
+    }
+
+    try {
+      setLoading(true)
+      const bankPayload = {
+        user_id: user.id,
+        bank_name: newBankName.trim(),
+        account_number: newAccNumber.trim(),
+        ifsc_code: newIfsc.trim().toUpperCase(),
+        holder_name: newHolderName.trim()
+      }
+
+      const { data, error } = await supabase.from('user_banks').insert([bankPayload]).select()
+      if (error) throw error
+
+      if (data && data[0]) {
+        setUserBank(data[0])
+      }
+      showToast('Bank account added successfully!')
+      setSubScreen('withdraw')
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to save bank account')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Copy UPI Function
+  const handleCopyUPI = () => {
+    navigator.clipboard.writeText('9685318069@mairtel')
+    showToast('UPI ID Copied: 9685318069@mairtel')
+  }
+
+  // Log Out
+  const handleLogout = async () => {
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)
-    setLoading(false)
-    setCurrentView('home')
+    setSubScreen('none')
+    setActiveTab('home')
   }
 
-  return (
-    <>
-      <div className="bg-shape-1"></div>
-      <div className="bg-shape-2"></div>
-      <div className="bg-shape-3"></div>
+  if (initialLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', gap: '12px' }}>
+        <i className="fas fa-spinner fa-spin" style={{ fontSize: '32px', color: '#00A3E0' }}></i>
+        <p style={{ color: '#082f6e', fontWeight: 800 }}>Loading Tiranga Pay...</p>
+      </div>
+    )
+  }
 
-      <div className="app-shell">
-        {/* Sticky Header */}
-        <header className="header-glass">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }} onClick={() => setCurrentView('home')}>
-            <div className="logo-badge">
-              <div className="logo-flag-icon">
-                <div className="flag-orange"></div>
-                <div className="flag-white">
-                  <div className="flag-wheel"></div>
-                </div>
-                <div className="flag-green"></div>
-              </div>
-            </div>
-            <div className="header-title-box">
-              <span className="header-app-name">Tiranga Pay</span>
-              <span className="header-tagline">Earn Money Online</span>
-            </div>
+  // 1. FRONT SCREEN: LOGIN & SIGNUP (When user is NOT logged in)
+  if (!user) {
+    return (
+      <div className="app-viewport">
+        {/* Top Branding Header */}
+        <header className="app-header">
+          <div className="brand-logo-text">
+            <span className="brand-tiranga">TIRANGA</span>
+            <span className="brand-pay">PAY</span>
           </div>
-
-          <div className="header-btn-group">
-            {user ? (
-              <button
-                type="button"
-                className="header-auth-btn"
-                onClick={() => setCurrentView('profile')}
-              >
-                <i className="fas fa-user-circle" style={{ marginRight: '5px' }}></i> Account
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="header-auth-btn"
-                onClick={() => {
-                  setAuthTab('login')
-                  setCurrentView('auth')
-                }}
-              >
-                Log In
-              </button>
-            )}
-            <button
-              type="button"
-              className="download-btn pulse-glow"
-              onClick={handleDownloadAPK}
-            >
-              {isDownloading ? (
-                <>
-                  <i className="fas fa-spinner fa-spin" style={{ marginRight: '6px' }}></i> Wait
-                </>
-              ) : (
-                <>
-                  <i className="fas fa-download" style={{ marginRight: '5px' }}></i> Download
-                </>
-              )}
-            </button>
+          <div className="header-actions">
+            <div className="header-circle-btn" onClick={() => alert('Tiranga Pay 24/7 Support: support@tirangapaypanel.in')}>
+              <i className="fa-solid fa-headset"></i>
+            </div>
+            <div className="header-circle-btn" onClick={() => alert('No new notifications')}>
+              <i className="fa-regular fa-bell"></i>
+            </div>
           </div>
         </header>
 
-        {/* View Routing */}
-        {currentView === 'home' && (
-          <main style={{ padding: '36px 20px 20px', textAlign: 'center' }}>
-            {/* Hero Text */}
-            <div style={{ marginBottom: '28px' }}>
-              <h2 className="hero-title">
-                TO GET RUPEE <br />
-                <span className="hero-subtitle">BY EASY TASK</span>
-              </h2>
-              <p className="hero-desc">
-                Complete simple daily tasks, refer friends, and withdraw your earnings instantly.
-              </p>
-            </div>
+        {/* Cyan Ticker Announcement */}
+        <div className="cyan-ticker">
+          <i className="fas fa-bullhorn"></i>
+          <span className="ticker-content">
+            TIRANGA PAY! Securely link your bank accounts and earn a flat 7% commission on all transactions! 24x7 Instant Settlement.
+          </span>
+        </div>
 
-            {/* 3D Illustration Graphic matching tirangapaypanel.in */}
-            <div style={{ position: 'relative', width: '100%', maxWidth: '320px', height: '290px', margin: '0 auto 20px' }}>
-              {/* Floating Coins */}
-              <div className="coin float-fast" style={{ width: '38px', height: '38px', top: '24px', left: '16px', zIndex: 20 }}></div>
-              <div className="coin float-slow" style={{ width: '52px', height: '52px', top: '48px', right: '4px', zIndex: 20, animationDelay: '0.5s' }}></div>
-              <div className="coin float-fast" style={{ width: '30px', height: '30px', bottom: '32px', left: '32px', zIndex: 30, animationDelay: '1s' }}></div>
-              <div className="coin float-slow" style={{ width: '44px', height: '44px', bottom: '48px', right: '28px', zIndex: 10, animationDelay: '1.5s' }}></div>
-
-              {/* Envelope / 3D Folder Element */}
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="float-slow">
-                <div style={{ width: '250px', height: '220px', position: 'relative' }}>
-                  {/* Back flap */}
-                  <div style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    width: '100%',
-                    height: '150px',
-                    background: 'linear-gradient(135deg, #FF9933, #e67300)',
-                    borderRadius: '20px',
-                    boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.4)'
-                  }}></div>
-
-                  {/* Document / Chart */}
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '24px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    width: '190px',
-                    height: '190px',
-                    background: '#ffffff',
-                    borderRadius: '16px',
-                    boxShadow: '0 15px 35px rgba(0, 0, 128, 0.15)',
-                    border: '1px solid #f1f5f9',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    padding: '16px',
-                    zIndex: 10
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                      <div style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '50%',
-                        background: '#eff6ff',
-                        color: '#000080',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '16px'
-                      }}>
-                        <i className="fas fa-chart-line"></i>
-                      </div>
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '4px' }}></div>
-                        <div style={{ width: '60%', height: '8px', background: '#f1f5f9', borderRadius: '4px' }}></div>
-                      </div>
-                    </div>
-
-                    {/* Bar charts */}
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', height: '80px', marginTop: 'auto', justifyContent: 'center' }}>
-                      <div style={{ width: '30%', height: '45%', background: 'linear-gradient(to top, #FF9933, #ffb866)', borderRadius: '6px 6px 0 0' }}></div>
-                      <div style={{ width: '30%', height: '65%', background: 'linear-gradient(to top, #cbd5e1, #e2e8f0)', borderRadius: '6px 6px 0 0' }}></div>
-                      <div style={{ width: '30%', height: '90%', background: 'linear-gradient(to top, #138808, #22c55e)', borderRadius: '6px 6px 0 0', position: 'relative' }}>
-                        <i className="fas fa-caret-up" style={{ position: 'absolute', top: '-18px', left: '50%', transform: 'translateX(-50%)', color: '#16a34a', fontSize: '18px' }}></i>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Front Flap */}
-                  <div style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    width: '100%',
-                    height: '110px',
-                    background: 'linear-gradient(135deg, #e67300, #FF9933)',
-                    borderRadius: '50px 50px 20px 20px',
-                    boxShadow: '0 -8px 20px rgba(0,0,0,0.12)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 20
-                  }}>
-                    <div style={{ background: 'rgba(255,255,255,0.3)', width: '80px', height: '6px', borderRadius: '9999px', marginTop: '30px' }}></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Big Action Download Button */}
-            <button
-              type="button"
-              className="download-btn download-btn-hero pulse-glow"
-              onClick={handleDownloadAPK}
-            >
-              {isDownloading ? (
-                <>
-                  <i className="fas fa-spinner fa-spin" style={{ marginRight: '10px' }}></i>
-                  Downloading APK...
-                </>
-              ) : (
-                <>
-                  <i className="fas fa-download" style={{ marginRight: '10px' }}></i>
-                  Download Now
-                </>
-              )}
-            </button>
-
-            {/* Or Online Auth Link */}
-            <div style={{ marginBottom: '28px' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthTab('signup')
-                  setCurrentView('auth')
-                }}
-                style={{
-                  background: '#ffffff',
-                  border: '1.5px solid #e2e8f0',
-                  color: '#000080',
-                  fontWeight: 800,
-                  fontSize: '13px',
-                  padding: '10px 20px',
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(0,0,128,0.06)'
-                }}
-              >
-                <i className="fas fa-user-plus" style={{ marginRight: '6px', color: '#FF9933' }}></i>
-                Don't have APK? Register Online
-              </button>
-            </div>
-
-            {/* Features 3-Card Grid */}
-            <div className="glass-card">
-              <div className="glass-badge">— Earn Money Online —</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginTop: '16px' }}>
-                <div style={{ textAlign: 'center', cursor: 'pointer' }} onClick={() => setCurrentView('team')}>
-                  <div style={{
-                    width: '54px',
-                    height: '54px',
-                    margin: '0 auto 8px',
-                    background: 'linear-gradient(135deg, #fff7ed, #ffedd5)',
-                    border: '1px solid #fed7aa',
-                    borderRadius: '18px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#FF9933',
-                    fontSize: '22px',
-                    boxShadow: '0 4px 12px rgba(255, 153, 51, 0.15)'
-                  }}>
-                    <i className="fas fa-clipboard-list"></i>
-                  </div>
-                  <h4 style={{ fontSize: '12px', fontWeight: 900, color: '#FF9933', textTransform: 'uppercase' }}>Easy Task</h4>
-                  <p style={{ fontSize: '9px', color: '#6b7280', fontWeight: 800, textTransform: 'uppercase', marginTop: '2px' }}>To get Rupee</p>
-                </div>
-
-                <div style={{ textAlign: 'center', cursor: 'pointer' }} onClick={() => setCurrentView(user ? 'profile' : 'auth')}>
-                  <div style={{
-                    width: '54px',
-                    height: '54px',
-                    margin: '0 auto 8px',
-                    background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)',
-                    border: '1px solid #bbf7d0',
-                    borderRadius: '18px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#138808',
-                    fontSize: '22px',
-                    boxShadow: '0 4px 12px rgba(19, 136, 8, 0.15)'
-                  }}>
-                    <i className="fas fa-bolt"></i>
-                  </div>
-                  <h4 style={{ fontSize: '12px', fontWeight: 900, color: '#138808', textTransform: 'uppercase' }}>Super-Fast</h4>
-                  <p style={{ fontSize: '9px', color: '#6b7280', fontWeight: 800, textTransform: 'uppercase', marginTop: '2px' }}>Withdrawal</p>
-                </div>
-
-                <div style={{ textAlign: 'center', cursor: 'pointer' }} onClick={() => setCurrentView('team')}>
-                  <div style={{
-                    width: '54px',
-                    height: '54px',
-                    margin: '0 auto 8px',
-                    background: 'linear-gradient(135deg, #eff6ff, #dbeafe)',
-                    border: '1px solid #bfdbfe',
-                    borderRadius: '18px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#000080',
-                    fontSize: '22px',
-                    boxShadow: '0 4px 12px rgba(0, 0, 128, 0.15)'
-                  }}>
-                    <i className="fas fa-users"></i>
-                  </div>
-                  <h4 style={{ fontSize: '12px', fontWeight: 900, color: '#000080', textTransform: 'uppercase' }}>Refer</h4>
-                  <p style={{ fontSize: '9px', color: '#6b7280', fontWeight: 800, textTransform: 'uppercase', marginTop: '2px' }}>And Earn</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Why Choose Us */}
-            <div className="navy-card">
-              <div className="glass-badge" style={{ color: '#000080' }}>Why choose our platform?</div>
-              <div style={{ marginTop: '18px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  <div style={{
-                    width: '34px',
-                    height: '34px',
-                    borderRadius: '50%',
-                    background: 'rgba(19, 136, 8, 0.2)',
-                    border: '1px solid rgba(19, 136, 8, 0.5)',
-                    color: '#22c55e',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    <i className="fas fa-shield-alt" style={{ fontSize: '14px' }}></i>
-                  </div>
-                  <div>
-                    <h3 style={{ fontWeight: 800, fontSize: '15px', color: '#ffffff', marginBottom: '3px' }}>Trusted Protection</h3>
-                    <p style={{ fontSize: '12px', color: '#bfdbfe', lineHeight: '1.4' }}>Backed by industry-recognized partners, delivering a stable and reliable earning environment.</p>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  <div style={{
-                    width: '34px',
-                    height: '34px',
-                    borderRadius: '50%',
-                    background: 'rgba(255, 153, 51, 0.2)',
-                    border: '1px solid rgba(255, 153, 51, 0.5)',
-                    color: '#FF9933',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    <i className="fas fa-rocket" style={{ fontSize: '14px' }}></i>
-                  </div>
-                  <div>
-                    <h3 style={{ fontWeight: 800, fontSize: '15px', color: '#ffffff', marginBottom: '3px' }}>Quick experience</h3>
-                    <p style={{ fontSize: '12px', color: '#bfdbfe', lineHeight: '1.4' }}>Smooth task flow, easy money earning without complex procedures.</p>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  <div style={{
-                    width: '34px',
-                    height: '34px',
-                    borderRadius: '50%',
-                    background: 'rgba(168, 85, 247, 0.2)',
-                    border: '1px solid rgba(168, 85, 247, 0.5)',
-                    color: '#c084fc',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    <i className="fas fa-boxes" style={{ fontSize: '14px' }}></i>
-                  </div>
-                  <div>
-                    <h3 style={{ fontWeight: 800, fontSize: '15px', color: '#ffffff', marginBottom: '3px' }}>Massive orders</h3>
-                    <p style={{ fontSize: '12px', color: '#bfdbfe', lineHeight: '1.4' }}>Diverse tasks, suitable for both part-time and full-time work! Start instantly.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginTop: '22px', borderTop: '1px solid rgba(59, 130, 246, 0.3)', paddingTop: '16px', textAlign: 'center' }}>
-                <p style={{ fontSize: '14px', fontWeight: 900, color: '#facc15' }}>Join us and earn money efficiently.</p>
-                <p style={{ fontSize: '11px', fontWeight: 800, color: '#ffffff', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.15em', opacity: 0.85 }}>Safer, faster, more reliable!</p>
-              </div>
-            </div>
-
-            {/* Team Profit Ratio */}
-            <div className="glass-card">
-              <div className="glass-badge" style={{ background: 'linear-gradient(to right, #000080, #000040)', color: '#ffffff' }}>About the Team</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginTop: '18px' }}>
-                {/* Level 1 */}
-                <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #fed7aa', overflow: 'hidden', boxShadow: '0 4px 14px rgba(255, 153, 51, 0.1)' }}>
-                  <div style={{ padding: '8px 4px', background: '#fff7ed', borderBottom: '1px solid #ffedd5' }}>
-                    <h4 style={{ fontSize: '12px', fontWeight: 900, color: '#FF9933', textTransform: 'uppercase' }}>Level 1</h4>
-                  </div>
-                  <div style={{ padding: '14px 0' }}>
-                    <span style={{ fontSize: '24px', fontWeight: 900, color: '#FF9933' }}>30%</span>
-                  </div>
-                  <div style={{ background: '#FF9933', padding: '6px 0' }}>
-                    <p style={{ fontSize: '9px', fontWeight: 800, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Profit Ratio</p>
-                  </div>
-                </div>
-
-                {/* Level 2 */}
-                <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 14px rgba(0, 0, 0, 0.05)' }}>
-                  <div style={{ padding: '8px 4px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    <h4 style={{ fontSize: '12px', fontWeight: 900, color: '#475569', textTransform: 'uppercase' }}>Level 2</h4>
-                  </div>
-                  <div style={{ padding: '14px 0' }}>
-                    <span style={{ fontSize: '24px', fontWeight: 900, color: '#334155' }}>20%</span>
-                  </div>
-                  <div style={{ background: '#64748b', padding: '6px 0' }}>
-                    <p style={{ fontSize: '9px', fontWeight: 800, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Profit Ratio</p>
-                  </div>
-                </div>
-
-                {/* Level 3 */}
-                <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #bbf7d0', overflow: 'hidden', boxShadow: '0 4px 14px rgba(19, 136, 8, 0.1)' }}>
-                  <div style={{ padding: '8px 4px', background: '#f0fdf4', borderBottom: '1px solid #dcfce7' }}>
-                    <h4 style={{ fontSize: '12px', fontWeight: 900, color: '#138808', textTransform: 'uppercase' }}>Level 3</h4>
-                  </div>
-                  <div style={{ padding: '14px 0' }}>
-                    <span style={{ fontSize: '24px', fontWeight: 900, color: '#138808' }}>10%</span>
-                  </div>
-                  <div style={{ background: '#138808', padding: '6px 0' }}>
-                    <p style={{ fontSize: '9px', fontWeight: 800, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Profit Ratio</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <p style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.15em', marginTop: '16px' }}>
-              Tiranga Pay Official &copy; 2026
-            </p>
-          </main>
-        )}
-
-        {/* Auth View (Login & Register) */}
-        {currentView === 'auth' && (
-          <div className="auth-panel">
-            <div className="glass-card" style={{ marginTop: '20px' }}>
-              <div className="auth-tabs">
-                <button
-                  type="button"
-                  className={`auth-tab-btn ${authTab === 'login' ? 'active' : ''}`}
-                  onClick={() => {
-                    setErrorMsg(null)
-                    setSuccessMsg(null)
-                    setAuthTab('login')
-                  }}
-                >
-                  <i className="fas fa-sign-in-alt" style={{ marginRight: '6px' }}></i> Log In
-                </button>
-                <button
-                  type="button"
-                  className={`auth-tab-btn ${authTab === 'signup' ? 'active' : ''}`}
-                  onClick={() => {
-                    setErrorMsg(null)
-                    setSuccessMsg(null)
-                    setAuthTab('signup')
-                  }}
-                >
-                  <i className="fas fa-user-plus" style={{ marginRight: '6px' }}></i> Register
-                </button>
-              </div>
-
-              {errorMsg && (
-                <div className="status-alert alert-fail">
-                  <i className="fas fa-exclamation-circle" style={{ fontSize: '16px' }}></i>
-                  <span>{errorMsg}</span>
-                </div>
-              )}
-
-              {successMsg && (
-                <div className="status-alert alert-pass">
-                  <i className="fas fa-check-circle" style={{ fontSize: '16px' }}></i>
-                  <span>{successMsg}</span>
-                </div>
-              )}
-
-              {authTab === 'login' ? (
-                <form onSubmit={handleLogin}>
-                  <div className="form-group">
-                    <label className="form-label">Email or Username</label>
-                    <div className="input-box">
-                      <span className="input-box-icon"><i className="fas fa-envelope"></i></span>
-                      <input
-                        type="email"
-                        className="custom-input"
-                        placeholder="Enter registered email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Password</label>
-                    <div className="input-box">
-                      <span className="input-box-icon"><i className="fas fa-lock"></i></span>
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        className="custom-input"
-                        placeholder="Enter your password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                      />
-                      <button
-                        type="button"
-                        className="password-toggle"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        <i className={`fas ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', marginBottom: '18px' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#4b5563', cursor: 'pointer', fontWeight: 600 }}>
-                      <input
-                        type="checkbox"
-                        checked={rememberMe}
-                        onChange={(e) => setRememberMe(e.target.checked)}
-                        style={{ accentColor: '#FF9933' }}
-                      />
-                      Remember me
-                    </label>
-                    <a
-                      href="#forgot"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        alert('Password reset link will be sent to your email.')
-                      }}
-                      style={{ color: '#FF9933', fontWeight: 700, textDecoration: 'none' }}
-                    >
-                      Forgot password?
-                    </a>
-                  </div>
-
-                  <button type="submit" className="auth-action-btn" disabled={loading}>
-                    {loading ? (
-                      <>
-                        <i className="fas fa-spinner fa-spin"></i>
-                        <span>Signing In...</span>
-                      </>
-                    ) : (
-                      <>
-                        <i className="fas fa-sign-in-alt"></i>
-                        <span>Log In</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-              ) : (
-                <form onSubmit={handleSignup}>
-                  <div className="form-group">
-                    <label className="form-label">Email Address</label>
-                    <div className="input-box">
-                      <span className="input-box-icon"><i className="fas fa-envelope"></i></span>
-                      <input
-                        type="email"
-                        className="custom-input"
-                        placeholder="your@email.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Phone Number (Saved in Supabase)</label>
-                    <div className="input-box">
-                      <span className="input-box-icon"><i className="fas fa-phone-alt"></i></span>
-                      <input
-                        type="tel"
-                        className="custom-input"
-                        placeholder="+91 9876543210"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Password</label>
-                    <div className="input-box">
-                      <span className="input-box-icon"><i className="fas fa-lock"></i></span>
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        className="custom-input"
-                        placeholder="At least 6 characters"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Confirm Password</label>
-                    <div className="input-box">
-                      <span className="input-box-icon"><i className="fas fa-shield-alt"></i></span>
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        className="custom-input"
-                        placeholder="Confirm password"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Invitation Code (Optional)</label>
-                    <div className="input-box">
-                      <span className="input-box-icon"><i className="fas fa-ticket-alt"></i></span>
-                      <input
-                        type="text"
-                        className="custom-input"
-                        placeholder="Enter invite code"
-                        value={inviteCode}
-                        onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                      />
-                    </div>
-                  </div>
-
-                  <button type="submit" className="auth-action-btn" disabled={loading}>
-                    {loading ? (
-                      <>
-                        <i className="fas fa-spinner fa-spin"></i>
-                        <span>Saving in Supabase...</span>
-                      </>
-                    ) : (
-                      <>
-                        <i className="fas fa-user-check"></i>
-                        <span>Register Account</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Team Profit Details View */}
-        {currentView === 'team' && (
-          <div style={{ padding: '24px 20px' }}>
-            <div className="glass-card" style={{ marginTop: '10px' }}>
-              <div className="glass-badge" style={{ background: '#000080', color: '#ffffff' }}>Team Profit Structure</div>
-              <h3 style={{ fontSize: '18px', fontWeight: 900, color: '#000080', marginTop: '10px', marginBottom: '8px' }}>
-                Invite Friends & Earn Commission
-              </h3>
-              <p style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.5', marginBottom: '18px' }}>
-                Every time your referred member completes a task, profit commission is credited instantly into your wallet.
-              </p>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px', background: '#fff7ed', borderRadius: '14px', border: '1px solid #fed7aa' }}>
-                  <div>
-                    <h5 style={{ fontWeight: 800, color: '#FF9933', fontSize: '14px' }}>Level 1 (Direct Friends)</h5>
-                    <span style={{ fontSize: '11px', color: '#9a3412' }}>Directly registered with your code</span>
-                  </div>
-                  <span style={{ fontSize: '20px', fontWeight: 900, color: '#FF9933' }}>30%</span>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
-                  <div>
-                    <h5 style={{ fontWeight: 800, color: '#475569', fontSize: '14px' }}>Level 2 (Friends' Friends)</h5>
-                    <span style={{ fontSize: '11px', color: '#64748b' }}>Invited by your Level 1 members</span>
-                  </div>
-                  <span style={{ fontSize: '20px', fontWeight: 900, color: '#334155' }}>20%</span>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px', background: '#f0fdf4', borderRadius: '14px', border: '1px solid #bbf7d0' }}>
-                  <div>
-                    <h5 style={{ fontWeight: 800, color: '#138808', fontSize: '14px' }}>Level 3 (Community)</h5>
-                    <span style={{ fontSize: '11px', color: '#166534' }}>Third-tier downline team</span>
-                  </div>
-                  <span style={{ fontSize: '20px', fontWeight: 900, color: '#138808' }}>10%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Member Profile & Wallet Dashboard */}
-        {currentView === 'profile' && user && (
-          <div style={{ padding: '24px 20px', textAlign: 'center' }}>
-            <div className="glass-card" style={{ marginTop: '10px' }}>
+        {/* Main Front Auth Card */}
+        <div className="front-auth-container">
+          <div className="front-auth-card">
+            <div style={{ textAlign: 'center', marginBottom: '22px' }}>
               <div style={{
-                width: '76px',
-                height: '76px',
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #000080, #FF9933)',
+                width: '64px',
+                height: '64px',
+                borderRadius: '18px',
+                background: 'linear-gradient(135deg, #082f6e, #00A3E0)',
                 margin: '0 auto 12px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '28px',
                 color: '#ffffff',
-                fontWeight: 900,
-                boxShadow: '0 8px 25px rgba(0, 0, 128, 0.25)'
+                fontSize: '26px',
+                boxShadow: '0 8px 20px rgba(0, 163, 224, 0.25)'
               }}>
-                {(user.email?.[0] || 'T').toUpperCase()}
+                <i className="fas fa-shield-alt"></i>
               </div>
+              <h2 style={{ fontSize: '22px', fontWeight: 900, color: '#082f6e' }}>
+                {authMode === 'login' ? 'User Login' : 'Register Account'}
+              </h2>
+              <p style={{ fontSize: '13px', color: '#64748b', fontWeight: 600, marginTop: '4px' }}>
+                {authMode === 'login' ? 'Sign in to access your Tiranga Pay portal' : 'Join Tiranga Pay and earn flat 7% commission'}
+              </p>
+            </div>
 
-              <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#1e293b' }}>{user.email}</h3>
-              <span style={{
-                display: 'inline-block',
-                padding: '4px 12px',
-                background: '#dcfce7',
-                border: '1px solid #86efac',
-                color: '#15803d',
-                borderRadius: '9999px',
-                fontSize: '11px',
-                fontWeight: 700,
-                marginTop: '6px',
-                marginBottom: '20px'
-              }}>
-                ● Supabase Synced Member
-              </span>
-
-              {/* Wallet Card */}
-              <div style={{
-                background: 'linear-gradient(135deg, #000080 0%, #000040 100%)',
-                borderRadius: '18px',
-                padding: '20px',
-                color: '#ffffff',
-                marginBottom: '18px',
-                boxShadow: '0 10px 25px rgba(0, 0, 128, 0.2)'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ textAlign: 'left' }}>
-                    <span style={{ fontSize: '11px', color: '#93c5fd', textTransform: 'uppercase', fontWeight: 700 }}>Total Balance</span>
-                    <h2 style={{ fontSize: '28px', fontWeight: 900, color: '#fbbf24', marginTop: '4px' }}>
-                      ₹{(profile?.wallet_balance ?? 0).toFixed(2)}
-                    </h2>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <span style={{ fontSize: '11px', color: '#93c5fd', textTransform: 'uppercase', fontWeight: 700 }}>Reward Points</span>
-                    <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#ffffff', marginTop: '4px' }}>
-                      {profile?.reward_points ?? 100} pts
-                    </h3>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '18px' }}>
-                  <button
-                    type="button"
-                    onClick={() => alert('Deposit portal will open here.')}
-                    style={{
-                      background: 'linear-gradient(90deg, #FF9933, #ea580c)',
-                      border: 'none',
-                      color: '#ffffff',
-                      padding: '10px',
-                      borderRadius: '10px',
-                      fontWeight: 800,
-                      fontSize: '13px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <i className="fas fa-plus-circle" style={{ marginRight: '6px' }}></i> Deposit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alert('Withdrawal request submitted.')}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.15)',
-                      border: '1px solid rgba(255, 255, 255, 0.3)',
-                      color: '#ffffff',
-                      padding: '10px',
-                      borderRadius: '10px',
-                      fontWeight: 800,
-                      fontSize: '13px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <i className="fas fa-arrow-circle-up" style={{ marginRight: '6px' }}></i> Withdraw
-                  </button>
-                </div>
-              </div>
-
-              {/* Account Details Box */}
-              <div style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '14px',
-                padding: '14px',
-                textAlign: 'left',
-                fontSize: '13px',
-                marginBottom: '18px'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ color: '#64748b' }}>Mobile:</span>
-                  <span style={{ fontWeight: 700, color: '#0f172a' }}>{profile?.phone || 'Not provided'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ color: '#64748b' }}>Invite Code:</span>
-                  <span style={{ fontWeight: 800, color: '#FF9933' }}>{profile?.invite_code || 'VIP100'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: '#64748b' }}>Member ID:</span>
-                  <span style={{ fontWeight: 600, color: '#64748b', fontSize: '11px' }}>{user.id.slice(0, 16)}...</span>
-                </div>
-              </div>
-
+            {/* Auth Mode Toggle Tabs */}
+            <div className="auth-tabs-header">
               <button
                 type="button"
-                onClick={handleSignOut}
-                disabled={loading}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  background: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  color: '#dc2626',
-                  borderRadius: '12px',
-                  fontWeight: 800,
-                  fontSize: '13px',
-                  cursor: 'pointer'
+                className={`auth-tab-choice ${authMode === 'login' ? 'active' : ''}`}
+                onClick={() => {
+                  setAuthError(null)
+                  setAuthSuccess(null)
+                  setAuthMode('login')
                 }}
               >
-                <i className="fas fa-sign-out-alt" style={{ marginRight: '6px' }}></i> Log Out
+                Log In
+              </button>
+              <button
+                type="button"
+                className={`auth-tab-choice ${authMode === 'signup' ? 'active' : ''}`}
+                onClick={() => {
+                  setAuthError(null)
+                  setAuthSuccess(null)
+                  setAuthMode('signup')
+                }}
+              >
+                Sign Up
+              </button>
+            </div>
+
+            {authError && (
+              <div className="auth-alert-box" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+                <i className="fas fa-exclamation-circle"></i>
+                <span>{authError}</span>
+              </div>
+            )}
+
+            {authSuccess && (
+              <div className="auth-alert-box" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>
+                <i className="fas fa-check-circle"></i>
+                <span>{authSuccess}</span>
+              </div>
+            )}
+
+            {authMode === 'login' ? (
+              <form onSubmit={handleFrontLogin}>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '6px' }}>
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    className="app-input-field"
+                    placeholder="Enter registered email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div style={{ marginBottom: '18px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '6px' }}>
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    className="app-input-field"
+                    placeholder="Enter password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <button type="submit" className="auth-submit-btn" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
+                      Signing In...
+                    </>
+                  ) : (
+                    'Log In'
+                  )}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleFrontSignup}>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    className="app-input-field"
+                    placeholder="your@email.com"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
+                    Mobile Number (For SMS Forwarder)
+                  </label>
+                  <input
+                    type="tel"
+                    className="app-input-field"
+                    placeholder="e.g. 6206762421"
+                    value={authPhone}
+                    onChange={(e) => setAuthPhone(e.target.value)}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    className="app-input-field"
+                    placeholder="At least 6 characters"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    className="app-input-field"
+                    placeholder="Repeat password"
+                    value={authConfirmPassword}
+                    onChange={(e) => setAuthConfirmPassword(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div style={{ marginBottom: '18px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
+                    Invitation / Referral Code (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    className="app-input-field"
+                    placeholder="Enter referral code"
+                    value={authInviteCode}
+                    onChange={(e) => setAuthInviteCode(e.target.value.toUpperCase())}
+                  />
+                </div>
+
+                <button type="submit" className="auth-submit-btn" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
+                      Registering...
+                    </>
+                  ) : (
+                    'Register Account'
+                  )}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // 2. LOGGED-IN APPLICATION INTERFACE (Matching all uploaded photos)
+  return (
+    <div className="app-viewport">
+      {/* Toast popup */}
+      {toastMsg && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: '#082f6e',
+          color: '#ffffff',
+          padding: '10px 20px',
+          borderRadius: '9999px',
+          fontSize: '13px',
+          fontWeight: 800,
+          zIndex: 100,
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <i className="fas fa-check-circle" style={{ color: '#00A3E0' }}></i>
+          <span>{toastMsg}</span>
+        </div>
+      )}
+
+      {/* Main App Header matching Photos */}
+      <header className="app-header">
+        <div className="brand-logo-text" onClick={() => { setSubScreen('none'); setActiveTab('home') }} style={{ cursor: 'pointer' }}>
+          <span className="brand-tiranga">TIRANGA</span>
+          <span className="brand-pay">PAY</span>
+        </div>
+        <div className="header-actions">
+          <div className="header-circle-btn" onClick={() => alert('Customer Support 24/7 is ready to assist you.')}>
+            <i className="fa-solid fa-headset"></i>
+          </div>
+          <div className="header-circle-btn" onClick={() => alert('Welcome to Tiranga Pay! Security Deposit & SMS Forwarder are active.')}>
+            <i className="fa-regular fa-bell"></i>
+          </div>
+        </div>
+      </header>
+
+      {/* Cyan Ticker Banner (as visible in Photo 2 & 1) */}
+      <div className="cyan-ticker">
+        <span className="ticker-content">
+          TIRANGA PAY! Securely link your bank accounts and earn a flat 7% commission on all transactions! 24x7 Instant Settlement.
+        </span>
+      </div>
+
+      {/* --- SUB-SCREENS --- */}
+
+      {/* SCREEN 1: Tiranga Pay SMS Forwarder (Photo 1) */}
+      {subScreen === 'sms' && (
+        <div style={{ padding: '0 16px 20px' }}>
+          {/* Sub Header */}
+          <div className="sub-header-bar" style={{ padding: '14px 0' }}>
+            <div className="back-btn-square" onClick={() => setSubScreen('none')}>
+              <i className="fas fa-chevron-left"></i>
+            </div>
+            <h2 className="sub-header-title">Tiranga Pay SMS Forwarder</h2>
+          </div>
+
+          {/* App Status Card */}
+          <div className="white-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h4 style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>App Status</h4>
+                <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, marginTop: '2px' }}>Current state of SMS Forwarder</p>
+              </div>
+              <span className={forwardSms ? 'status-badge-online' : 'status-badge-offline'}>
+                {forwardSms ? 'ONLINE' : 'OFFLINE'}
+              </span>
+            </div>
+          </div>
+
+          {/* Bank Details */}
+          <div className="section-cyan-label">BANK DETAILS</div>
+          <div className="white-card">
+            <h4 style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>Bank Register Mobile Number</h4>
+            <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, margin: '2px 0 12px' }}>
+              Please enter your 10-digit registered mobile number.
+            </p>
+            <div style={{
+              display: 'flex',
+              border: '1.5px solid #e2e8f0',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              background: '#ffffff'
+            }}>
+              <div style={{
+                padding: '12px 14px',
+                background: '#f8fafc',
+                borderRight: '1.5px solid #e2e8f0',
+                color: '#0f172a',
+                fontWeight: 800,
+                fontSize: '15px'
+              }}>
+                +91
+              </div>
+              <input
+                type="tel"
+                value={bankRegPhone}
+                onChange={(e) => setBankRegPhone(e.target.value)}
+                style={{
+                  flex: 1,
+                  padding: '12px 14px',
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: '15px',
+                  fontWeight: 700,
+                  color: '#0f172a',
+                  fontFamily: 'inherit'
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Forwarding Function */}
+          <div className="section-gray-label">FORWARDING FUNCTION</div>
+          <div className="white-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ maxWidth: '280px' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>Forward Sms</h4>
+                <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, marginTop: '2px', lineHeight: '1.3' }}>
+                  Main switch, requires permissions to read and send SMS messages.
+                </p>
+              </div>
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={forwardSms}
+                  onChange={(e) => {
+                    setForwardSms(e.target.checked)
+                    showToast(e.target.checked ? 'SMS Forwarder is now ONLINE' : 'SMS Forwarder is OFFLINE')
+                  }}
+                />
+                <span className="slider-round"></span>
+              </label>
+            </div>
+          </div>
+
+          {/* Keep Alive Settings */}
+          <div className="section-gray-label">KEEP ALIVE SETTINGS</div>
+          <div className="white-card">
+            <div className="card-item-row">
+              <div style={{ maxWidth: '280px' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>Auto Startup</h4>
+                <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, marginTop: '2px' }}>
+                  Allow Apps to Self-Start for background running.
+                </p>
+              </div>
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={autoStartup}
+                  onChange={(e) => setAutoStartup(e.target.checked)}
+                />
+                <span className="slider-round"></span>
+              </label>
+            </div>
+
+            <div className="card-item-row">
+              <div style={{ maxWidth: '280px' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>Battery Optimization</h4>
+                <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, marginTop: '2px' }}>
+                  Ignore battery limits for continuous background running.
+                </p>
+              </div>
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={batteryOptimization}
+                  onChange={(e) => setBatteryOptimization(e.target.checked)}
+                />
+                <span className="slider-round"></span>
+              </label>
+            </div>
+
+            <div className="card-item-row">
+              <div style={{ maxWidth: '280px' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>Hide from recent Apps</h4>
+                <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, marginTop: '2px' }}>
+                  Prevent accidental task closing.
+                </p>
+              </div>
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={hideRecentApps}
+                  onChange={(e) => setHideRecentApps(e.target.checked)}
+                />
+                <span className="slider-round"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SCREEN 2: Withdraw Funds (Photo 2) */}
+      {subScreen === 'withdraw' && (
+        <div style={{ padding: '0 16px 20px' }}>
+          <div className="sub-header-bar" style={{ padding: '14px 0' }}>
+            <div className="back-btn-square" onClick={() => setSubScreen('none')}>
+              <i className="fas fa-chevron-left"></i>
+            </div>
+            <h2 className="sub-header-title">Withdraw Funds</h2>
+          </div>
+
+          <form onSubmit={handleSubmitWithdrawal} className="white-card">
+            {withdrawMsg && (
+              <div className="auth-alert-box" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>
+                <i className="fas fa-info-circle"></i>
+                <span>{withdrawMsg}</span>
+              </div>
+            )}
+
+            <div style={{ marginBottom: '18px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+                Withdrawal Amount (₹)
+              </label>
+              <input
+                type="number"
+                className="app-input-field"
+                placeholder="Min withdrawal ₹500"
+                value={withdrawAmount}
+                onChange={(e) => setWithdrawAmount(e.target.value)}
+                required
+              />
+            </div>
+
+            {/* Withdrawal Receiving Account */}
+            <div style={{ marginBottom: '18px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 800, color: '#082f6e', marginBottom: '8px' }}>
+                <i className="fas fa-landmark"></i>
+                Withdrawal Receiving Account
+              </label>
+
+              {userBank ? (
+                <div style={{
+                  border: '1.5px solid #00A3E0',
+                  background: '#f0faff',
+                  borderRadius: '14px',
+                  padding: '14px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <div>
+                    <h5 style={{ fontWeight: 800, color: '#082f6e', fontSize: '14px' }}>{userBank.bank_name}</h5>
+                    <p style={{ fontSize: '12px', color: '#0284c7', fontWeight: 600 }}>A/C: {userBank.account_number} ({userBank.holder_name})</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSubScreen('bank_setup')}
+                    style={{ background: '#00A3E0', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                  >
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <div className="dashed-bank-box" onClick={() => setSubScreen('bank_setup')}>
+                  <div>
+                    <h5 style={{ fontSize: '14px', fontWeight: 800, color: '#082f6e' }}>No Bank Added</h5>
+                    <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, marginTop: '2px', fontFamily: 'monospace' }}>
+                      Setup receiving bank
+                    </p>
+                  </div>
+                  <div className="add-bank-circle-btn">+</div>
+                </div>
+              )}
+            </div>
+
+            {/* Account Password */}
+            <div style={{ marginBottom: '22px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+                Account Password (For Security)
+              </label>
+              <input
+                type="password"
+                className="app-input-field"
+                placeholder="Enter password"
+                value={withdrawPassword}
+                onChange={(e) => setWithdrawPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            <button type="submit" className="green-action-btn" disabled={loading}>
+              {loading ? 'Processing...' : 'Submit Withdrawal Request'}
+            </button>
+          </form>
+
+          {/* Withdrawal History */}
+          <div style={{ marginTop: '24px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', marginBottom: '12px' }}>
+              Withdrawal History
+            </h3>
+            {withdrawalsList.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: '13px', fontWeight: 600 }}>
+                No records found.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {withdrawalsList.map((item) => (
+                  <div key={item.id} className="white-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px' }}>
+                    <div>
+                      <h5 style={{ fontWeight: 800, color: '#082f6e' }}>₹{item.amount.toFixed(2)}</h5>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>{new Date(item.created_at).toLocaleString()}</span>
+                    </div>
+                    <span style={{
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      background: item.status === 'approved' ? '#dcfce7' : '#fef9c3',
+                      color: item.status === 'approved' ? '#15803d' : '#854d0e'
+                    }}>
+                      {item.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SCREEN 2B: Add Bank Account */}
+      {subScreen === 'bank_setup' && (
+        <div style={{ padding: '0 16px 20px' }}>
+          <div className="sub-header-bar" style={{ padding: '14px 0' }}>
+            <div className="back-btn-square" onClick={() => setSubScreen('withdraw')}>
+              <i className="fas fa-chevron-left"></i>
+            </div>
+            <h2 className="sub-header-title">Link Withdrawal Bank</h2>
+          </div>
+
+          <form onSubmit={handleSaveBank} className="white-card">
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                Bank Name
+              </label>
+              <input
+                type="text"
+                className="app-input-field"
+                placeholder="e.g. State Bank of India, HDFC"
+                value={newBankName}
+                onChange={(e) => setNewBankName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                Account Holder Name
+              </label>
+              <input
+                type="text"
+                className="app-input-field"
+                placeholder="Name as per bank passbook"
+                value={newHolderName}
+                onChange={(e) => setNewHolderName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                Bank Account Number
+              </label>
+              <input
+                type="text"
+                className="app-input-field"
+                placeholder="Enter complete account number"
+                value={newAccNumber}
+                onChange={(e) => setNewAccNumber(e.target.value)}
+                required
+              />
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                IFSC Code
+              </label>
+              <input
+                type="text"
+                className="app-input-field"
+                placeholder="e.g. SBIN0001234"
+                value={newIfsc}
+                onChange={(e) => setNewIfsc(e.target.value.toUpperCase())}
+                required
+              />
+            </div>
+
+            <button type="submit" className="green-action-btn" disabled={loading}>
+              Save & Link Bank
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* SCREEN 3: Security Deposit (Photos 4 & 5) */}
+      {subScreen === 'deposit' && (
+        <div style={{ padding: '0 16px 20px' }}>
+          <div className="sub-header-bar" style={{ padding: '14px 0' }}>
+            <div className="back-btn-square" onClick={() => setSubScreen('none')}>
+              <i className="fas fa-chevron-left"></i>
+            </div>
+            <h2 className="sub-header-title">Security Deposit</h2>
+          </div>
+
+          <div style={{ textAlign: 'center', margin: '8px 0 16px' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 900, color: '#082f6e', letterSpacing: '-0.01em' }}>
+              TIRANGA PAY SECURITY DEPOSIT
+            </h2>
+          </div>
+
+          {/* Tier Packages */}
+          <div className="tier-packages-grid">
+            <div
+              className={`tier-pkg-box ${depositTier === 'savings' ? 'active' : ''}`}
+              onClick={() => setDepositTier('savings')}
+            >
+              <div className="tier-pkg-title">Savings Account</div>
+              <div className="tier-pkg-amount">₹2000</div>
+            </div>
+
+            <div
+              className={`tier-pkg-box ${depositTier === 'current' ? 'active' : ''}`}
+              onClick={() => setDepositTier('current')}
+            >
+              <div className="tier-pkg-title">Current Account</div>
+              <div className="tier-pkg-amount">₹5000</div>
+            </div>
+
+            <div
+              className={`tier-pkg-box ${depositTier === 'corporate' ? 'active' : ''}`}
+              onClick={() => setDepositTier('corporate')}
+            >
+              <div className="tier-pkg-title">Corporate Account</div>
+              <div className="tier-pkg-amount">₹15000</div>
+            </div>
+          </div>
+
+          {/* Payment Method Switcher */}
+          <div className="payment-tabs">
+            <button
+              type="button"
+              className={`payment-tab-btn ${paymentMode === 'upi' ? 'active' : ''}`}
+              onClick={() => setPaymentMode('upi')}
+            >
+              <i className="fas fa-qrcode" style={{ color: '#16a34a' }}></i> UPI
+            </button>
+            <button
+              type="button"
+              className={`payment-tab-btn ${paymentMode === 'bank' ? 'active' : ''}`}
+              onClick={() => setPaymentMode('bank')}
+            >
+              <i className="fas fa-university" style={{ color: '#f59e0b' }}></i> Direct Bank
+            </button>
+          </div>
+
+          {/* QR Code Container (Photo 4) */}
+          <div className="qr-code-card">
+            <div className="qr-merchant-name">
+              <span>ABHIJEET</span>
+              <i className="fas fa-check-circle verified-blue-check"></i>
+            </div>
+
+            {/* QR Code generator */}
+            <div className="qr-image-wrapper">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent('upi://pay?pa=9685318069@mairtel&pn=ABHIJEET&cu=INR')}`}
+                alt="Payment QR"
+              />
+            </div>
+
+            <div className="scan-tag-text">
+              SCAN TO PAY SECURITY DEPOSIT
+            </div>
+
+            <div className="upi-copy-box">
+              <span className="upi-id-text">UPI: 9685318069@mairtel</span>
+              <button type="button" className="upi-copy-btn" onClick={handleCopyUPI}>
+                <i className="fas fa-copy"></i> Copy
               </button>
             </div>
           </div>
-        )}
 
-        {/* Bottom Navigation */}
-        <nav className="bottom-nav">
-          <button
-            type="button"
-            className={`nav-item ${currentView === 'home' ? 'active' : ''}`}
-            onClick={() => setCurrentView('home')}
-          >
-            <i className="fas fa-home"></i>
-            <span>Home</span>
-          </button>
+          {/* Submit Payment Proof Card (Photo 5) */}
+          <div className="white-card" style={{ position: 'relative', paddingTop: '28px' }}>
+            <div style={{
+              position: 'absolute',
+              top: '-14px',
+              left: '16px',
+              background: '#082f6e',
+              color: '#ffffff',
+              padding: '5px 16px',
+              borderRadius: '9999px',
+              fontSize: '11px',
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em'
+            }}>
+              SUBMIT PAYMENT PROOF
+            </div>
 
-          <button
-            type="button"
-            className="nav-item"
-            onClick={handleDownloadAPK}
-          >
-            <i className="fas fa-download"></i>
-            <span>Download</span>
-          </button>
+            {depositMsg && (
+              <div className="auth-alert-box" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>
+                <i className="fas fa-check-circle"></i>
+                <span>{depositMsg}</span>
+              </div>
+            )}
 
-          <button
-            type="button"
-            className={`nav-item ${currentView === 'team' ? 'active' : ''}`}
-            onClick={() => setCurrentView('team')}
-          >
-            <i className="fas fa-users"></i>
-            <span>Team</span>
-          </button>
+            <form onSubmit={handleSubmitDeposit}>
+              {/* UTR Number */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: '#f59e0b', marginBottom: '6px' }}>
+                  <span>#</span> ENTER 12-DIGIT UTR NUMBER
+                </label>
+                <input
+                  type="text"
+                  className="app-input-field"
+                  placeholder="e.g. 3124xxxxxxxx"
+                  value={utrNumber}
+                  onChange={(e) => setUtrNumber(e.target.value)}
+                  required
+                />
+              </div>
 
-          <button
-            type="button"
-            className={`nav-item ${currentView === 'auth' || currentView === 'profile' ? 'active' : ''}`}
-            onClick={() => {
-              if (user) {
-                setCurrentView('profile')
-              } else {
-                setAuthTab('login')
-                setCurrentView('auth')
-              }
-            }}
-          >
-            <i className="fas fa-user"></i>
-            <span>{user ? 'Profile' : 'Account'}</span>
-          </button>
-        </nav>
-      </div>
-    </>
+              {/* Upload Payment Slip */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: '#16a34a', marginBottom: '6px' }}>
+                  <i className="fas fa-image"></i> UPLOAD PAYMENT SLIP
+                </label>
+
+                <div style={{
+                  border: '1.5px dashed #cbd5e1',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  background: '#f8fafc',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px'
+                }}>
+                  <label style={{
+                    background: '#e0e7ff',
+                    color: '#3730a3',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    fontWeight: 700,
+                    fontSize: '13px',
+                    cursor: 'pointer'
+                  }}>
+                    Choose File
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) setSelectedFileName(file.name)
+                      }}
+                    />
+                  </label>
+                  <span style={{ fontSize: '13px', color: '#64748b' }}>{selectedFileName}</span>
+                </div>
+
+                <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px', lineHeight: '1.4' }}>
+                  <i className="fas fa-info-circle"></i> Ensure the UTR and amount are clearly visible in the screenshot.
+                </p>
+              </div>
+
+              <button type="submit" className="green-action-btn" disabled={loading}>
+                {loading ? 'Submitting Details...' : 'SUBMIT DETAILS'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MAIN TABS --- */}
+
+      {/* TAB 1: HOME OVERVIEW (When no subscreen is open) */}
+      {subScreen === 'none' && activeTab === 'home' && (
+        <div style={{ padding: '16px' }}>
+          {/* Main Account Balance Card */}
+          <div style={{
+            background: 'linear-gradient(135deg, #082f6e 0%, #00A3E0 100%)',
+            borderRadius: '20px',
+            padding: '22px 20px',
+            color: '#ffffff',
+            boxShadow: '0 8px 24px rgba(8, 47, 110, 0.25)',
+            marginBottom: '18px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <span style={{ fontSize: '11px', color: '#bae6fd', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Available Balance
+                </span>
+                <h1 style={{ fontSize: '32px', fontWeight: 900, color: '#fef08a', marginTop: '4px' }}>
+                  ₹{(profile?.wallet_balance ?? 0).toFixed(2)}
+                </h1>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: '11px', color: '#bae6fd', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Commission Rate
+                </span>
+                <h2 style={{ fontSize: '20px', fontWeight: 900, color: '#ffffff', marginTop: '4px' }}>
+                  Flat 7%
+                </h2>
+              </div>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '12px',
+              marginTop: '18px',
+              paddingTop: '16px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.2)'
+            }}>
+              <button
+                type="button"
+                onClick={() => setSubScreen('deposit')}
+                style={{
+                  background: '#ffffff',
+                  color: '#082f6e',
+                  border: 'none',
+                  padding: '12px',
+                  borderRadius: '12px',
+                  fontSize: '13px',
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                <i className="fas fa-shield-alt" style={{ color: '#00A3E0' }}></i> Security Deposit
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSubScreen('withdraw')}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.15)',
+                  border: '1px solid rgba(255, 255, 255, 0.4)',
+                  color: '#ffffff',
+                  padding: '12px',
+                  borderRadius: '12px',
+                  fontSize: '13px',
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                <i className="fas fa-hand-holding-usd"></i> Withdraw Funds
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Shortcuts */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '18px' }}>
+            <div
+              className="white-card"
+              style={{ cursor: 'pointer', padding: '16px', display: 'flex', alignItems: 'center', gap: '14px', marginBottom: 0 }}
+              onClick={() => setSubScreen('sms')}
+            >
+              <div style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '12px',
+                background: '#e0f2fe',
+                color: '#0284c7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '18px'
+              }}>
+                <i className="fas fa-comment-sms"></i>
+              </div>
+              <div>
+                <h4 style={{ fontSize: '13px', fontWeight: 800, color: '#082f6e' }}>SMS Forwarder</h4>
+                <p style={{ fontSize: '11px', color: forwardSms ? '#16a34a' : '#ef4444', fontWeight: 700 }}>
+                  {forwardSms ? '● Online' : '● Offline'}
+                </p>
+              </div>
+            </div>
+
+            <div
+              className="white-card"
+              style={{ cursor: 'pointer', padding: '16px', display: 'flex', alignItems: 'center', gap: '14px', marginBottom: 0 }}
+              onClick={() => setSubScreen('bank_setup')}
+            >
+              <div style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '12px',
+                background: '#dcfce7',
+                color: '#15803d',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '18px'
+              }}>
+                <i className="fas fa-credit-card"></i>
+              </div>
+              <div>
+                <h4 style={{ fontSize: '13px', fontWeight: 800, color: '#082f6e' }}>Bank Cards</h4>
+                <p style={{ fontSize: '11px', color: userBank ? '#15803d' : '#94a3b8', fontWeight: 700 }}>
+                  {userBank ? '1 Linked' : 'Not setup'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Operations Status */}
+          <div className="white-card">
+            <h4 style={{ fontSize: '14px', fontWeight: 800, color: '#082f6e', marginBottom: '14px' }}>
+              Account Activity
+            </h4>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ fontSize: '13px', color: '#64748b' }}>Registered Mobile:</span>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>+91 {bankRegPhone}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ fontSize: '13px', color: '#64748b' }}>Invite Referral Code:</span>
+              <span style={{ fontSize: '13px', fontWeight: 800, color: '#00A3E0' }}>{profile?.invite_code || 'VIP100'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
+              <span style={{ fontSize: '13px', color: '#64748b' }}>Daily Commission Settlement:</span>
+              <span style={{ fontSize: '13px', fontWeight: 800, color: '#16a34a' }}>Instant 24x7</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: TRANSACTIONS LIST */}
+      {subScreen === 'none' && activeTab === 'transactions' && (
+        <div style={{ padding: '16px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 900, color: '#082f6e', marginBottom: '16px' }}>
+            All Transactions
+          </h2>
+
+          <div style={{ marginBottom: '20px' }}>
+            <h4 style={{ fontSize: '13px', fontWeight: 800, color: '#00A3E0', textTransform: 'uppercase', marginBottom: '10px' }}>
+              Deposit Submissions ({depositsList.length})
+            </h4>
+            {depositsList.length === 0 ? (
+              <div className="white-card" style={{ textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                No deposits yet.
+              </div>
+            ) : (
+              depositsList.map((dep) => (
+                <div key={dep.id} className="white-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px', marginBottom: '10px' }}>
+                  <div>
+                    <h5 style={{ fontWeight: 800, color: '#082f6e', fontSize: '14px' }}>₹{dep.amount.toFixed(2)} ({dep.account_type})</h5>
+                    <p style={{ fontSize: '11px', color: '#64748b' }}>UTR: {dep.utr_number}</p>
+                    <span style={{ fontSize: '10px', color: '#94a3b8' }}>{new Date(dep.created_at).toLocaleString()}</span>
+                  </div>
+                  <span style={{
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    background: dep.status === 'approved' ? '#dcfce7' : '#fef9c3',
+                    color: dep.status === 'approved' ? '#15803d' : '#854d0e'
+                  }}>
+                    {dep.status}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div>
+            <h4 style={{ fontSize: '13px', fontWeight: 800, color: '#00A3E0', textTransform: 'uppercase', marginBottom: '10px' }}>
+              Withdrawal Requests ({withdrawalsList.length})
+            </h4>
+            {withdrawalsList.length === 0 ? (
+              <div className="white-card" style={{ textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                No withdrawals yet.
+              </div>
+            ) : (
+              withdrawalsList.map((w) => (
+                <div key={w.id} className="white-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px', marginBottom: '10px' }}>
+                  <div>
+                    <h5 style={{ fontWeight: 800, color: '#082f6e', fontSize: '14px' }}>₹{w.amount.toFixed(2)}</h5>
+                    <p style={{ fontSize: '11px', color: '#64748b' }}>{w.bank_account_info}</p>
+                    <span style={{ fontSize: '10px', color: '#94a3b8' }}>{new Date(w.created_at).toLocaleString()}</span>
+                  </div>
+                  <span style={{
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    background: w.status === 'approved' ? '#dcfce7' : '#fef9c3',
+                    color: w.status === 'approved' ? '#15803d' : '#854d0e'
+                  }}>
+                    {w.status}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: PROFILE SCREEN (Photo 3) */}
+      {subScreen === 'none' && activeTab === 'profile' && (
+        <div style={{ padding: '16px' }}>
+          {/* Top 4 Shortcuts Row matching Photo 3 */}
+          <div className="profile-shortcuts-row">
+            {/* 1. Deposit Record */}
+            <div className="shortcut-item" onClick={() => { setActiveTab('transactions') }}>
+              <div className="shortcut-icon-box" style={{ background: '#e0f2fe', color: '#0284c7' }}>
+                <i className="fas fa-file-invoice-dollar"></i>
+              </div>
+              <span className="shortcut-title">Deposit Record</span>
+            </div>
+
+            {/* 2. Withdraw Record */}
+            <div className="shortcut-item" onClick={() => { setSubScreen('withdraw') }}>
+              <div className="shortcut-icon-box" style={{ background: '#f3e8ff', color: '#a855f7' }}>
+                <i className="fas fa-receipt"></i>
+              </div>
+              <span className="shortcut-title">Withdraw Record</span>
+            </div>
+
+            {/* 3. My Team */}
+            <div className="shortcut-item" onClick={() => alert(`My Team Level: 3-Tier Commission (Level 1: 30%, Level 2: 20%, Level 3: 10%). Your Invite Code: ${profile?.invite_code || 'VIP100'}`)}>
+              <div className="shortcut-icon-box" style={{ background: '#ffedd5', color: '#f97316' }}>
+                <i className="fas fa-users"></i>
+              </div>
+              <span className="shortcut-title">My Team</span>
+            </div>
+
+            {/* 4. VIP Level */}
+            <div className="shortcut-item" onClick={() => alert('VIP Level 1 Active! Flat 7% Commission Rate.')}>
+              <div className="shortcut-icon-box" style={{ background: '#fef9c3', color: '#eab308' }}>
+                <i className="fas fa-crown"></i>
+              </div>
+              <span className="shortcut-title">VIP Level</span>
+            </div>
+          </div>
+
+          {/* Profile Menu List matching Photo 3 */}
+          <div className="profile-menu-card">
+            {/* My Bank Cards */}
+            <div className="profile-menu-item" onClick={() => setSubScreen('bank_setup')}>
+              <div className="profile-item-left">
+                <div className="profile-item-icon" style={{ background: '#ecfdf5', color: '#10b981' }}>
+                  <i className="fas fa-credit-card"></i>
+                </div>
+                <span className="profile-item-name">My Bank Cards</span>
+              </div>
+              <i className="fas fa-chevron-right profile-item-chevron"></i>
+            </div>
+
+            {/* Withdrawal Bank */}
+            <div className="profile-menu-item" onClick={() => setSubScreen('withdraw')}>
+              <div className="profile-item-left">
+                <div className="profile-item-icon" style={{ background: '#eff6ff', color: '#3b82f6' }}>
+                  <i className="fas fa-university"></i>
+                </div>
+                <span className="profile-item-name">Withdrawal Bank</span>
+              </div>
+              <i className="fas fa-chevron-right profile-item-chevron"></i>
+            </div>
+
+            {/* SMS Forwarder */}
+            <div className="profile-menu-item" onClick={() => setSubScreen('sms')}>
+              <div className="profile-item-left">
+                <div className="profile-item-icon" style={{ background: '#f1f5f9', color: '#475569' }}>
+                  <i className="fas fa-comment-sms"></i>
+                </div>
+                <span className="profile-item-name">SMS Forwarder</span>
+              </div>
+              <i className="fas fa-chevron-right profile-item-chevron"></i>
+            </div>
+
+            {/* Invite Friends */}
+            <div className="profile-menu-item" onClick={() => {
+              navigator.clipboard.writeText(window.location.origin + window.location.pathname)
+              showToast('Referral link copied to clipboard!')
+            }}>
+              <div className="profile-item-left">
+                <div className="profile-item-icon" style={{ background: '#fff7ed', color: '#f97316' }}>
+                  <i className="fas fa-user-plus"></i>
+                </div>
+                <span className="profile-item-name">Invite Friends</span>
+              </div>
+              <i className="fas fa-chevron-right profile-item-chevron"></i>
+            </div>
+
+            {/* Help & Support */}
+            <div className="profile-menu-item" onClick={() => alert('Customer Support 24/7 is ready to assist you: support@tirangapaypanel.in')}>
+              <div className="profile-item-left">
+                <div className="profile-item-icon" style={{ background: '#ecfeff', color: '#06b6d4' }}>
+                  <i className="fa-solid fa-headset"></i>
+                </div>
+                <span className="profile-item-name">Help & Support</span>
+              </div>
+              <i className="fas fa-chevron-right profile-item-chevron"></i>
+            </div>
+
+            {/* Change Password */}
+            <div className="profile-menu-item" onClick={() => alert('Password reset instructions will be sent to your registered email: ' + user.email)}>
+              <div className="profile-item-left">
+                <div className="profile-item-icon" style={{ background: '#faf5ff', color: '#a855f7' }}>
+                  <i className="fas fa-lock"></i>
+                </div>
+                <span className="profile-item-name">Change Password</span>
+              </div>
+              <i className="fas fa-chevron-right profile-item-chevron"></i>
+            </div>
+
+            {/* Secure Logout */}
+            <div className="profile-menu-item" onClick={handleLogout}>
+              <div className="profile-item-left">
+                <div className="profile-item-icon" style={{ background: '#fef2f2', color: '#ef4444' }}>
+                  <i className="fas fa-sign-out-alt"></i>
+                </div>
+                <span className="profile-item-name" style={{ color: '#ef4444' }}>Secure Logout</span>
+              </div>
+              <i className="fas fa-chevron-right profile-item-chevron"></i>
+            </div>
+          </div>
+
+          {/* Version Subtext matching Photo 3 */}
+          <div style={{ textAlign: 'center', marginTop: '20px', color: '#94a3b8', fontSize: '11px', fontWeight: 800, letterSpacing: '0.08em' }}>
+            TIRANGA PAY V2.5.0
+          </div>
+        </div>
+      )}
+
+      {/* BOTTOM NAVIGATION BAR (Home, Transactions, Profile) matching all photos */}
+      <nav className="app-bottom-nav">
+        <button
+          type="button"
+          className={`bottom-tab-btn ${activeTab === 'home' && subScreen === 'none' ? 'active' : ''}`}
+          onClick={() => {
+            setSubScreen('none')
+            setActiveTab('home')
+          }}
+        >
+          <i className="fas fa-home"></i>
+          <span>Home</span>
+        </button>
+
+        <button
+          type="button"
+          className={`bottom-tab-btn ${activeTab === 'transactions' && subScreen === 'none' ? 'active' : ''}`}
+          onClick={() => {
+            setSubScreen('none')
+            setActiveTab('transactions')
+          }}
+        >
+          <i className="fas fa-list-alt"></i>
+          <span>Transactions</span>
+        </button>
+
+        <button
+          type="button"
+          className={`bottom-tab-btn ${activeTab === 'profile' && subScreen === 'none' ? 'active' : ''}`}
+          onClick={() => {
+            setSubScreen('none')
+            setActiveTab('profile')
+          }}
+        >
+          <i className="fas fa-user-circle"></i>
+          <span>Profile</span>
+        </button>
+      </nav>
+    </div>
   )
 }
