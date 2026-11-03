@@ -35,6 +35,7 @@ interface BankAccount {
   account_number: string
   ifsc_code: string
   holder_name: string
+  status?: string
 }
 
 export default function App() {
@@ -75,7 +76,13 @@ export default function App() {
   // Withdrawal State (Photo 2)
   const [withdrawAmount, setWithdrawAmount] = useState('')
   const [withdrawPassword, setWithdrawPassword] = useState('')
-  const [userBank, setUserBank] = useState<BankAccount | null>(null)
+  const [userBank, setUserBank] = useState<BankAccount | null>({
+    bank_name: 'INDUSIND BANK',
+    account_number: '2107',
+    ifsc_code: 'INDB0000001',
+    holder_name: 'VIKRAM KUMAR',
+    status: 'PENDING'
+  })
   const [withdrawMsg, setWithdrawMsg] = useState<string | null>(null)
   const [withdrawalsList, setWithdrawalsList] = useState<WithdrawalRecord[]>([])
 
@@ -388,10 +395,11 @@ export default function App() {
       setLoading(true)
       const bankPayload = {
         user_id: user.id,
-        bank_name: newBankName.trim(),
+        bank_name: newBankName.trim().toUpperCase(),
         account_number: newAccNumber.trim(),
         ifsc_code: newIfsc.trim().toUpperCase(),
-        holder_name: newHolderName.trim()
+        holder_name: newHolderName.trim().toUpperCase(),
+        status: 'PENDING'
       }
 
       const { data, error } = await supabase.from('user_banks').insert([bankPayload]).select()
@@ -401,7 +409,8 @@ export default function App() {
         setUserBank(data[0])
       }
       showToast('Bank account added successfully!')
-      setSubScreen('withdraw')
+      setSubScreen('none')
+      setActiveTab('home')
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to save bank account')
     } finally {
@@ -691,7 +700,7 @@ export default function App() {
           <span className="brand-pay">PAY</span>
         </div>
         <div className="header-actions">
-          <div className="header-circle-btn" onClick={() => alert('Customer Support 24/7 is ready to assist you.')}>
+          <div className="header-circle-btn" onClick={() => alert('Customer Support 24/7 is ready to assist you: support@tirangapaypanel.in')}>
             <i className="fa-solid fa-headset"></i>
           </div>
           <div className="header-circle-btn" onClick={() => alert('Welcome to Tiranga Pay! Security Deposit & SMS Forwarder are active.')}>
@@ -700,10 +709,10 @@ export default function App() {
         </div>
       </header>
 
-      {/* Cyan Ticker Banner (as visible in Photo 2 & 1) */}
+      {/* Cyan Ticker Banner (as visible in Photo 6, 2, 1) */}
       <div className="cyan-ticker">
         <span className="ticker-content">
-          TIRANGA PAY! Securely link your bank accounts and earn a flat 7% commission on all transactions! 24x7 Instant Settlement.
+          TIRANGA PAY! Securely link your bank accounts and earn a flat 7% commission on all auto-transactions!
         </span>
       </div>
 
@@ -990,10 +999,10 @@ export default function App() {
       {subScreen === 'bank_setup' && (
         <div style={{ padding: '0 16px 20px' }}>
           <div className="sub-header-bar" style={{ padding: '14px 0' }}>
-            <div className="back-btn-square" onClick={() => setSubScreen('withdraw')}>
+            <div className="back-btn-square" onClick={() => setSubScreen('none')}>
               <i className="fas fa-chevron-left"></i>
             </div>
-            <h2 className="sub-header-title">Link Withdrawal Bank</h2>
+            <h2 className="sub-header-title">Link Bank Card</h2>
           </div>
 
           <form onSubmit={handleSaveBank} className="white-card">
@@ -1004,7 +1013,7 @@ export default function App() {
               <input
                 type="text"
                 className="app-input-field"
-                placeholder="e.g. State Bank of India, HDFC"
+                placeholder="e.g. INDUSIND BANK, HDFC, SBI"
                 value={newBankName}
                 onChange={(e) => setNewBankName(e.target.value)}
                 required
@@ -1018,7 +1027,7 @@ export default function App() {
               <input
                 type="text"
                 className="app-input-field"
-                placeholder="Name as per bank passbook"
+                placeholder="e.g. VIKRAM KUMAR"
                 value={newHolderName}
                 onChange={(e) => setNewHolderName(e.target.value)}
                 required
@@ -1027,12 +1036,12 @@ export default function App() {
 
             <div style={{ marginBottom: '14px' }}>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
-                Bank Account Number
+                Account / Card Number
               </label>
               <input
                 type="text"
                 className="app-input-field"
-                placeholder="Enter complete account number"
+                placeholder="e.g. 109283742107"
                 value={newAccNumber}
                 onChange={(e) => setNewAccNumber(e.target.value)}
                 required
@@ -1046,7 +1055,7 @@ export default function App() {
               <input
                 type="text"
                 className="app-input-field"
-                placeholder="e.g. SBIN0001234"
+                placeholder="e.g. INDB0000001"
                 value={newIfsc}
                 onChange={(e) => setNewIfsc(e.target.value.toUpperCase())}
                 required
@@ -1054,7 +1063,7 @@ export default function App() {
             </div>
 
             <button type="submit" className="green-action-btn" disabled={loading}>
-              Save & Link Bank
+              Save & Link Bank Card
             </button>
           </form>
         </div>
@@ -1128,7 +1137,6 @@ export default function App() {
               <i className="fas fa-check-circle verified-blue-check"></i>
             </div>
 
-            {/* QR Code generator */}
             <div className="qr-image-wrapper">
               <img
                 src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent('upi://pay?pa=9685318069@mairtel&pn=ABHIJEET&cu=INR')}`}
@@ -1242,160 +1250,129 @@ export default function App() {
 
       {/* --- MAIN TABS --- */}
 
-      {/* TAB 1: HOME OVERVIEW (When no subscreen is open) */}
+      {/* TAB 1: EXACT HOME SCREEN (Photo 6 - media_1793681549669_b532bf5e.jpg) */}
       {subScreen === 'none' && activeTab === 'home' && (
         <div style={{ padding: '16px' }}>
-          {/* Main Account Balance Card */}
-          <div style={{
-            background: 'linear-gradient(135deg, #082f6e 0%, #00A3E0 100%)',
-            borderRadius: '20px',
-            padding: '22px 20px',
-            color: '#ffffff',
-            boxShadow: '0 8px 24px rgba(8, 47, 110, 0.25)',
-            marginBottom: '18px'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <span style={{ fontSize: '11px', color: '#bae6fd', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  Available Balance
-                </span>
-                <h1 style={{ fontSize: '32px', fontWeight: 900, color: '#fef08a', marginTop: '4px' }}>
-                  ₹{(profile?.wallet_balance ?? 0).toFixed(2)}
-                </h1>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '11px', color: '#bae6fd', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  Commission Rate
-                </span>
-                <h2 style={{ fontSize: '20px', fontWeight: 900, color: '#ffffff', marginTop: '4px' }}>
-                  Flat 7%
-                </h2>
-              </div>
+          {/* Total Wallet Balance Card */}
+          <div className="home-wallet-card">
+            <div className="wallet-card-header">
+              <span className="wallet-title-text">
+                Total Wallet Balance (7% Comm.)
+              </span>
+              <span className="wallet-level-badge">
+                Level: V1
+              </span>
             </div>
 
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, 1fr)',
-              gap: '12px',
-              marginTop: '18px',
-              paddingTop: '16px',
-              borderTop: '1px solid rgba(255, 255, 255, 0.2)'
-            }}>
+            <div className="wallet-balance-amount">
+              ₹ {(profile?.wallet_balance ?? 0).toFixed(2)}
+            </div>
+
+            <div className="wallet-pill-buttons">
               <button
                 type="button"
-                onClick={() => setSubScreen('deposit')}
-                style={{
-                  background: '#ffffff',
-                  color: '#082f6e',
-                  border: 'none',
-                  padding: '12px',
-                  borderRadius: '12px',
-                  fontSize: '13px',
-                  fontWeight: 900,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px'
-                }}
+                className="pill-comm-btn"
+                onClick={() => showToast('Commission rate is flat 7% on all transactions.')}
               >
-                <i className="fas fa-shield-alt" style={{ color: '#00A3E0' }}></i> Security Deposit
+                <i className="fa-solid fa-bolt"></i> Commission 7%
               </button>
 
               <button
                 type="button"
+                className="pill-withdraw-btn"
                 onClick={() => setSubScreen('withdraw')}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.15)',
-                  border: '1px solid rgba(255, 255, 255, 0.4)',
-                  color: '#ffffff',
-                  padding: '12px',
-                  borderRadius: '12px',
-                  fontSize: '13px',
-                  fontWeight: 900,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px'
-                }}
               >
-                <i className="fas fa-hand-holding-usd"></i> Withdraw Funds
+                <i className="fa-solid fa-wallet"></i> Withdrawal
               </button>
             </div>
           </div>
 
-          {/* Quick Shortcuts */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '18px' }}>
-            <div
-              className="white-card"
-              style={{ cursor: 'pointer', padding: '16px', display: 'flex', alignItems: 'center', gap: '14px', marginBottom: 0 }}
-              onClick={() => setSubScreen('sms')}
-            >
-              <div style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
-                background: '#e0f2fe',
-                color: '#0284c7',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '18px'
-              }}>
-                <i className="fas fa-comment-sms"></i>
-              </div>
-              <div>
-                <h4 style={{ fontSize: '13px', fontWeight: 800, color: '#082f6e' }}>SMS Forwarder</h4>
-                <p style={{ fontSize: '11px', color: forwardSms ? '#16a34a' : '#ef4444', fontWeight: 700 }}>
-                  {forwardSms ? '● Online' : '● Offline'}
-                </p>
-              </div>
+          {/* Section: My Linked Bank Cards */}
+          <h3 className="home-section-title">My Linked Bank Cards</h3>
+          
+          <div className="bank-card-container">
+            <div className="bank-card-top">
+              <span className="bank-card-name">
+                {userBank?.bank_name || 'INDUSIND BANK'}
+              </span>
+              <span className="bank-status-pill">
+                {userBank?.status || 'PENDING'}
+              </span>
             </div>
 
-            <div
-              className="white-card"
-              style={{ cursor: 'pointer', padding: '16px', display: 'flex', alignItems: 'center', gap: '14px', marginBottom: 0 }}
-              onClick={() => setSubScreen('bank_setup')}
-            >
-              <div style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
-                background: '#dcfce7',
-                color: '#15803d',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '18px'
-              }}>
-                <i className="fas fa-credit-card"></i>
-              </div>
+            <div className="bank-card-digits">
+              • • • • &nbsp; {userBank?.account_number ? userBank.account_number.slice(-4) : '2 1 0 7'}
+            </div>
+
+            <div className="bank-card-bottom">
               <div>
-                <h4 style={{ fontSize: '13px', fontWeight: 800, color: '#082f6e' }}>Bank Cards</h4>
-                <p style={{ fontSize: '11px', color: userBank ? '#15803d' : '#94a3b8', fontWeight: 700 }}>
-                  {userBank ? '1 Linked' : 'Not setup'}
-                </p>
+                <span className="card-holder-label">CARD HOLDER NAME</span>
+                <div className="card-holder-val">
+                  {userBank?.holder_name || 'VIKRAM KUMAR'}
+                </div>
               </div>
+
+              <button
+                type="button"
+                className="card-edit-btn"
+                onClick={() => setSubScreen('bank_setup')}
+                title="Edit Card Details"
+              >
+                <i className="fas fa-pencil-alt"></i>
+              </button>
             </div>
           </div>
 
-          {/* Recent Operations Status */}
-          <div className="white-card">
-            <h4 style={{ fontSize: '14px', fontWeight: 800, color: '#082f6e', marginBottom: '14px' }}>
-              Account Activity
-            </h4>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <span style={{ fontSize: '13px', color: '#64748b' }}>Registered Mobile:</span>
-              <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>+91 {bankRegPhone}</span>
+          <button
+            type="button"
+            className="add-card-dashed-btn"
+            onClick={() => setSubScreen('bank_setup')}
+          >
+            + Add another card
+          </button>
+
+          {/* Section: Main Features */}
+          <h3 className="home-section-title" style={{ marginTop: '24px' }}>Main Features</h3>
+
+          <div className="main-features-box">
+            {/* 1. Security Deposit */}
+            <div className="feature-btn-item" onClick={() => setSubScreen('deposit')}>
+              <div className="feature-round-icon icon-blue-shield">
+                <i className="fa-solid fa-shield-halved"></i>
+              </div>
+              <span className="feature-label-text">
+                Security<br />Deposit
+              </span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <span style={{ fontSize: '13px', color: '#64748b' }}>Invite Referral Code:</span>
-              <span style={{ fontSize: '13px', fontWeight: 800, color: '#00A3E0' }}>{profile?.invite_code || 'VIP100'}</span>
+
+            {/* 2. Add Bank */}
+            <div className="feature-btn-item" onClick={() => setSubScreen('bank_setup')}>
+              <div className="feature-round-icon icon-green-bank">
+                <i className="fa-solid fa-landmark"></i>
+              </div>
+              <span className="feature-label-text">
+                Add Bank
+              </span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-              <span style={{ fontSize: '13px', color: '#64748b' }}>Daily Commission Settlement:</span>
-              <span style={{ fontSize: '13px', fontWeight: 800, color: '#16a34a' }}>Instant 24x7</span>
+
+            {/* 3. Withdrawal */}
+            <div className="feature-btn-item" onClick={() => setSubScreen('withdraw')}>
+              <div className="feature-round-icon icon-purple-withdraw">
+                <i className="fa-solid fa-hand-holding-dollar"></i>
+              </div>
+              <span className="feature-label-text">
+                Withdrawal
+              </span>
+            </div>
+
+            {/* 4. SMS Forward */}
+            <div className="feature-btn-item" onClick={() => setSubScreen('sms')}>
+              <div className="feature-round-icon icon-gray-sms">
+                <i className="fa-solid fa-comment-sms"></i>
+              </div>
+              <span className="feature-label-text">
+                SMS<br />Forward
+              </span>
             </div>
           </div>
         </div>

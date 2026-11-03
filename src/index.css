@@ -1,12 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 :root {
-  --primary-navy: #0a3178;
+  --primary-navy: #082f6e;
   --primary-cyan: #00A3E0;
-  --primary-green: #15803d;
+  --primary-green: #16a34a;
   --bg-slate: #f8fafc;
   --border-color: #e2e8f0;
-  --card-bg: #ffffff;
 }
 
 * {
@@ -32,20 +31,20 @@ body {
   justify-content: center;
 }
 
-/* Mobile Shell */
+/* Mobile Viewport Shell */
 .app-viewport {
   width: 100%;
   max-width: 440px;
   min-height: 100vh;
   background: #f8fafc;
   position: relative;
-  box-shadow: 0 0 35px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
-  padding-bottom: 70px;
+  padding-bottom: 74px;
 }
 
-/* Top App Header */
+/* Header matching all photos */
 .app-header {
   background: #ffffff;
   padding: 14px 18px;
@@ -59,12 +58,12 @@ body {
 }
 
 .brand-logo-text {
-  font-size: 20px;
+  font-size: 21px;
   font-weight: 900;
   letter-spacing: -0.01em;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 
 .brand-tiranga {
@@ -105,8 +104,8 @@ body {
 .cyan-ticker {
   background: #00A3E0;
   color: #ffffff;
-  padding: 7px 14px;
-  font-size: 11px;
+  padding: 8px 14px;
+  font-size: 11.5px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -117,12 +116,253 @@ body {
 
 .ticker-content {
   display: inline-block;
-  animation: marquee 18s linear infinite;
+  animation: marquee 16s linear infinite;
 }
 
 @keyframes marquee {
   0% { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
+}
+
+/* Home Screen: Total Wallet Balance Card (Photo 6) */
+.home-wallet-card {
+  background: radial-gradient(circle at 85% 15%, rgba(0, 163, 224, 0.3) 0%, transparent 60%), linear-gradient(135deg, #062b77 0%, #0045aa 100%);
+  border-radius: 22px;
+  padding: 22px 20px 20px;
+  color: #ffffff;
+  box-shadow: 0 10px 26px rgba(6, 43, 119, 0.28);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 22px;
+}
+
+.wallet-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wallet-title-text {
+  font-size: 13.5px;
+  color: #93c5fd;
+  font-weight: 600;
+}
+
+.wallet-level-badge {
+  font-size: 13.5px;
+  color: #dbeafe;
+  font-weight: 700;
+}
+
+.wallet-balance-amount {
+  font-size: 38px;
+  font-weight: 900;
+  color: #ffffff;
+  margin: 12px 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wallet-pill-buttons {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pill-comm-btn {
+  background: #00A3E0;
+  color: #ffffff;
+  padding: 9px 18px;
+  border-radius: 9999px;
+  border: none;
+  font-size: 13px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 163, 224, 0.35);
+}
+
+.pill-withdraw-btn {
+  background: #16a34a;
+  color: #ffffff;
+  padding: 9px 18px;
+  border-radius: 9999px;
+  border: none;
+  font-size: 13px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.35);
+}
+
+/* Section Headings */
+.home-section-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 14px;
+}
+
+/* Linked Bank Card (Photo 6) */
+.bank-card-container {
+  background: linear-gradient(135deg, #053b82 0%, #0060be 50%, #009de0 100%);
+  border-radius: 20px;
+  padding: 22px 20px;
+  color: #ffffff;
+  box-shadow: 0 12px 28px rgba(0, 96, 190, 0.22);
+  position: relative;
+}
+
+.bank-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.bank-card-name {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.bank-status-pill {
+  background: #facc15;
+  color: #000000;
+  padding: 5px 14px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bank-card-digits {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  margin: 22px 0 16px;
+  color: #ffffff;
+}
+
+.bank-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.card-holder-label {
+  font-size: 9.5px;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.card-holder-val {
+  font-size: 15px;
+  font-weight: 900;
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+
+.card-edit-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  backdrop-filter: blur(5px);
+}
+
+.add-card-dashed-btn {
+  border: 1.5px dashed #002b80;
+  background: #ffffff;
+  color: #002b80;
+  border-radius: 14px;
+  padding: 13px;
+  font-weight: 800;
+  font-size: 14px;
+  width: 100%;
+  cursor: pointer;
+  text-align: center;
+  margin-top: 14px;
+  box-shadow: 0 2px 8px rgba(0, 43, 128, 0.04);
+}
+
+/* Main Features Card Container (Photo 6) */
+.main-features-box {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 20px 8px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
+  border: 1px solid #f1f5f9;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.feature-btn-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+}
+
+.feature-round-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 20px;
+  margin-bottom: 8px;
+  transition: transform 0.2s;
+}
+
+.feature-btn-item:active .feature-round-icon {
+  transform: scale(0.92);
+}
+
+.icon-blue-shield {
+  background: #00A3E0;
+  box-shadow: 0 6px 16px rgba(0, 163, 224, 0.35);
+}
+
+.icon-green-bank {
+  background: #16a34a;
+  box-shadow: 0 6px 16px rgba(22, 163, 74, 0.35);
+}
+
+.icon-purple-withdraw {
+  background: #9333ea;
+  box-shadow: 0 6px 16px rgba(147, 51, 234, 0.35);
+}
+
+.icon-gray-sms {
+  background: #64748b;
+  box-shadow: 0 6px 16px rgba(100, 116, 139, 0.35);
+}
+
+.feature-label-text {
+  font-size: 11px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.25;
 }
 
 /* Sub-header Navigation Bar */
