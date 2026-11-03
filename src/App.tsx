@@ -130,8 +130,22 @@ export default function App() {
   // Toast / Copy helper
   const [toastMsg, setToastMsg] = useState<string | null>(null)
 
-  // Admin Modal State
-  const [showAdminModal, setShowAdminModal] = useState(false)
+  // Admin Route & Auth State (/admin)
+  const [isAdminPage, setIsAdminPage] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const p = window.location.pathname.toLowerCase()
+    const h = window.location.hash.toLowerCase()
+    const s = window.location.search.toLowerCase()
+    return (
+      p.endsWith('/admin') ||
+      p.endsWith('/admin/') ||
+      p.includes('/admin') ||
+      h.includes('admin') ||
+      s.includes('admin') ||
+      s.includes('p=%2fadmin') ||
+      s.includes('p=/admin')
+    )
+  })
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false)
   const [adminUser, setAdminUser] = useState('')
   const [adminPass, setAdminPass] = useState('')
@@ -327,8 +341,34 @@ export default function App() {
       }
     })
 
-    return () => subscription.unsubscribe()
-  }, [])
+    const checkAdmin = () => {
+      const p = window.location.pathname.toLowerCase()
+      const h = window.location.hash.toLowerCase()
+      const s = window.location.search.toLowerCase()
+      const match = (
+        p.endsWith('/admin') ||
+        p.endsWith('/admin/') ||
+        p.includes('/admin') ||
+        h.includes('admin') ||
+        s.includes('admin') ||
+        s.includes('p=%2fadmin') ||
+        s.includes('p=/admin')
+      )
+      setIsAdminPage(match)
+      if (match && isAdminLoggedIn) {
+        loadAdminData()
+      }
+    }
+
+    window.addEventListener('popstate', checkAdmin)
+    window.addEventListener('hashchange', checkAdmin)
+
+    return () => {
+      subscription.unsubscribe()
+      window.removeEventListener('popstate', checkAdmin)
+      window.removeEventListener('hashchange', checkAdmin)
+    }
+  }, [isAdminLoggedIn])
 
   const unreadNotifCount = notifications.filter(n => !n.is_read).length
 
@@ -673,6 +713,429 @@ export default function App() {
     )
   }
 
+  // DEDICATED ADMIN PORTAL ROUTE: /admin
+  if (isAdminPage) {
+    return (
+      <div className="app-viewport" style={{ maxWidth: '640px', minHeight: '100vh', background: '#f8fafc' }}>
+        {/* Admin Header */}
+        <header className="app-header" style={{ background: '#082f6e', color: '#ffffff', padding: '16px 20px' }}>
+          <div>
+            <div className="brand-logo-text">
+              <span className="brand-tiranga" style={{ color: '#ffffff' }}>TIRANGA</span>
+              <span className="brand-pay" style={{ color: '#38bdf8' }}>ADMIN</span>
+            </div>
+            <div style={{ fontSize: '10px', color: '#93c5fd', fontWeight: 800, letterSpacing: '0.05em' }}>
+              PANEL PORTAL (/admin)
+            </div>
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                window.history.pushState(null, '', window.location.pathname.replace(/\/admin\/?$/i, '') || './')
+                setIsAdminPage(false)
+              }}
+              style={{
+                background: 'rgba(255,255,255,0.15)',
+                color: '#ffffff',
+                border: '1px solid rgba(255,255,255,0.3)',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                fontSize: '11.5px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <i className="fa-solid fa-arrow-left"></i> User Website
+            </button>
+          </div>
+        </header>
+
+        {!isAdminLoggedIn ? (
+          <div style={{ padding: '36px 20px' }}>
+            <div className="white-card" style={{ padding: '28px 22px', boxShadow: '0 12px 30px rgba(8, 47, 110, 0.12)' }}>
+              <div style={{ textAlign: 'center', marginBottom: '22px' }}>
+                <div style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '16px',
+                  background: 'linear-gradient(135deg, #082f6e, #00A3E0)',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 12px',
+                  fontSize: '24px',
+                  boxShadow: '0 6px 16px rgba(0,163,224,0.3)'
+                }}>
+                  <i className="fas fa-shield-halved"></i>
+                </div>
+                <h3 style={{ fontWeight: 900, color: '#082f6e', fontSize: '19px' }}>Admin Authentication</h3>
+                <p style={{ fontSize: '12.5px', color: '#64748b', marginTop: '4px' }}>
+                  Sign in to view all registered users and manage live data
+                </p>
+              </div>
+
+              {adminError && (
+                <div className="auth-alert-box" style={{ background: '#fef2f2', color: '#dc2626', marginBottom: '14px' }}>
+                  <i className="fas fa-exclamation-circle"></i> {adminError}
+                </div>
+              )}
+
+              <form onSubmit={handleAdminLogin}>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
+                    Username
+                  </label>
+                  <input
+                    type="text"
+                    className="app-input-field"
+                    placeholder=""
+                    value={adminUser}
+                    onChange={(e) => setAdminUser(e.target.value)}
+                    required
+                    autoComplete="off"
+                  />
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    className="app-input-field"
+                    placeholder=""
+                    value={adminPass}
+                    onChange={(e) => setAdminPass(e.target.value)}
+                    required
+                    autoComplete="off"
+                  />
+                </div>
+
+                <button type="submit" className="green-action-btn" style={{ padding: '14px', fontSize: '14px' }}>
+                  Log In to Admin Panel
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: '16px 16px 30px' }}>
+            {/* Quick Stats Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '16px' }}>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 4px', textAlign: 'center' }}>
+                <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b' }}>USERS</div>
+                <div style={{ fontSize: '16px', fontWeight: 900, color: '#082f6e' }}>{allUsers.length}</div>
+              </div>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 4px', textAlign: 'center' }}>
+                <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b' }}>DEPOSITS</div>
+                <div style={{ fontSize: '16px', fontWeight: 900, color: '#16a34a' }}>{allDeposits.length}</div>
+              </div>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 4px', textAlign: 'center' }}>
+                <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b' }}>WITHDRAWS</div>
+                <div style={{ fontSize: '16px', fontWeight: 900, color: '#9333ea' }}>{allWithdrawals.length}</div>
+              </div>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 4px', textAlign: 'center' }}>
+                <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b' }}>BANKS</div>
+                <div style={{ fontSize: '16px', fontWeight: 900, color: '#0284c7' }}>{allBanks.length}</div>
+              </div>
+            </div>
+
+            {/* Admin Tabs */}
+            <div className="admin-tabs-row" style={{ overflowX: 'auto', gap: '3px' }}>
+              <button
+                type="button"
+                className={`admin-tab-btn ${adminTab === 'users' ? 'active' : ''}`}
+                onClick={() => setAdminTab('users')}
+              >
+                Users ({allUsers.length})
+              </button>
+              <button
+                type="button"
+                className={`admin-tab-btn ${adminTab === 'deposits' ? 'active' : ''}`}
+                onClick={() => setAdminTab('deposits')}
+              >
+                Deposits ({allDeposits.length})
+              </button>
+              <button
+                type="button"
+                className={`admin-tab-btn ${adminTab === 'withdrawals' ? 'active' : ''}`}
+                onClick={() => setAdminTab('withdrawals')}
+              >
+                Withdrawals ({allWithdrawals.length})
+              </button>
+              <button
+                type="button"
+                className={`admin-tab-btn ${adminTab === 'banks' ? 'active' : ''}`}
+                onClick={() => setAdminTab('banks')}
+              >
+                Banks ({allBanks.length})
+              </button>
+              <button
+                type="button"
+                className={`admin-tab-btn ${adminTab === 'messages' ? 'active' : ''}`}
+                onClick={() => setAdminTab('messages')}
+              >
+                Messages
+              </button>
+            </div>
+
+            {/* Tab: Users */}
+            {adminTab === 'users' && (
+              <div>
+                {allUsers.length === 0 ? (
+                  <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center', padding: '20px' }}>No registered users yet.</p>
+                ) : (
+                  allUsers.map((u) => (
+                    <div key={u.id} className="admin-record-item">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <strong style={{ fontSize: '13px', color: '#082f6e' }}>{u.email}</strong>
+                        <span style={{ fontSize: '12px', fontWeight: 800, color: '#16a34a' }}>₹{Number(u.wallet_balance).toFixed(2)}</span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>
+                        <span>Mobile: {u.phone || 'N/A'}</span> &bull; <span>Invite: {u.invite_code || 'None'}</span>
+                      </div>
+                      <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px' }}>
+                        Joined: {new Date(u.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Tab: Deposits */}
+            {adminTab === 'deposits' && (
+              <div>
+                {allDeposits.length === 0 ? (
+                  <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center', padding: '20px' }}>No deposits submitted.</p>
+                ) : (
+                  allDeposits.map((d) => (
+                    <div key={d.id} className="admin-record-item">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <strong style={{ fontSize: '14px', color: '#082f6e' }}>₹{d.amount} ({d.account_type})</strong>
+                        <span style={{
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          fontSize: '10.5px',
+                          fontWeight: 800,
+                          textTransform: 'uppercase',
+                          background: d.status === 'approved' ? '#dcfce7' : d.status === 'rejected' ? '#fee2e2' : '#fef9c3',
+                          color: d.status === 'approved' ? '#15803d' : d.status === 'rejected' ? '#b91c1c' : '#854d0e'
+                        }}>
+                          {d.status}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>UTR: {d.utr_number}</p>
+                      <span style={{ fontSize: '10px', color: '#94a3b8' }}>Date: {new Date(d.created_at).toLocaleString()}</span>
+                      
+                      {d.status === 'pending' && (
+                        <div className="admin-actions-btns">
+                          <button type="button" className="btn-approve" onClick={() => handleApproveDeposit(d)}>
+                            ✓ Approve & Credit
+                          </button>
+                          <button type="button" className="btn-reject" onClick={() => handleRejectDeposit(d.id)}>
+                            ✕ Reject
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Tab: Withdrawals */}
+            {adminTab === 'withdrawals' && (
+              <div>
+                {allWithdrawals.length === 0 ? (
+                  <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center', padding: '20px' }}>No withdrawal requests.</p>
+                ) : (
+                  allWithdrawals.map((w) => (
+                    <div key={w.id} className="admin-record-item">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <strong style={{ fontSize: '14px', color: '#082f6e' }}>₹{w.amount}</strong>
+                        <span style={{
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          fontSize: '10.5px',
+                          fontWeight: 800,
+                          textTransform: 'uppercase',
+                          background: w.status === 'approved' ? '#dcfce7' : w.status === 'rejected' ? '#fee2e2' : '#fef9c3',
+                          color: w.status === 'approved' ? '#15803d' : w.status === 'rejected' ? '#b91c1c' : '#854d0e'
+                        }}>
+                          {w.status}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '11px', color: '#334155' }}>Bank: {w.bank_account_info}</p>
+                      <span style={{ fontSize: '10px', color: '#94a3b8' }}>Date: {new Date(w.created_at).toLocaleString()}</span>
+
+                      {w.status === 'pending' && (
+                        <div className="admin-actions-btns">
+                          <button type="button" className="btn-approve" onClick={() => handleApproveWithdrawal(w.id)}>
+                            ✓ Approve & Mark Paid
+                          </button>
+                          <button type="button" className="btn-reject" onClick={() => handleRejectWithdrawal(w.id)}>
+                            ✕ Reject
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Tab: Banks */}
+            {adminTab === 'banks' && (
+              <div>
+                {allBanks.length === 0 ? (
+                  <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center', padding: '20px' }}>No bank accounts linked yet.</p>
+                ) : (
+                  allBanks.map((b) => (
+                    <div key={b.id || b.account_number} className="admin-record-item">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <strong style={{ fontSize: '13px', color: '#082f6e' }}>{b.bank_name}</strong>
+                        <span style={{
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          fontSize: '10px',
+                          fontWeight: 800,
+                          background: b.status === 'ACTIVE' ? '#dcfce7' : '#fef3c7',
+                          color: b.status === 'ACTIVE' ? '#15803d' : '#b45309'
+                        }}>
+                          {b.status === 'ACTIVE' ? 'ACTIVE' : 'PENDING'}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '12px', color: '#334155' }}>A/C: {b.account_number} ({b.holder_name})</p>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>IFSC: {b.ifsc_code}</span>
+                      {b.card_number && (
+                        <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '2px', fontWeight: 700 }}>
+                          ATM Card: •••• •••• •••• {b.card_number.slice(-4)} | Exp: {b.card_expiry || 'N/A'}
+                        </div>
+                      )}
+                      <div className="admin-actions-btns">
+                        {b.status !== 'ACTIVE' ? (
+                          <button
+                            type="button"
+                            className="btn-approve"
+                            onClick={() => handleUpdateBankStatus(b.id!, b.user_id!, 'ACTIVE')}
+                          >
+                            ✓ Activate (Unlock Deposit QR)
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            style={{ flex: 1, padding: '7px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                            onClick={() => handleUpdateBankStatus(b.id!, b.user_id!, 'PENDING')}
+                          >
+                            ⏳ Set Pending
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Tab: Messages */}
+            {adminTab === 'messages' && (
+              <div>
+                <form onSubmit={handleSendNotification} style={{ background: '#f1f5f9', padding: '12px', borderRadius: '12px', marginBottom: '14px' }}>
+                  <h5 style={{ fontSize: '12.5px', fontWeight: 800, color: '#082f6e', marginBottom: '8px' }}>
+                    <i className="fa-solid fa-paper-plane"></i> Send Notification to Customer
+                  </h5>
+
+                  <div style={{ marginBottom: '8px' }}>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '3px' }}>
+                      Select Customer
+                    </label>
+                    <select
+                      className="app-input-field"
+                      value={msgTargetUser}
+                      onChange={(e) => setMsgTargetUser(e.target.value)}
+                      style={{ fontSize: '12px', padding: '8px 10px' }}
+                    >
+                      <option value="all">📢 All Customers (Broadcast)</option>
+                      {allUsers.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.email} ({u.phone || 'No phone'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ marginBottom: '8px' }}>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '3px' }}>
+                      Subject / Title
+                    </label>
+                    <input
+                      type="text"
+                      className="app-input-field"
+                      placeholder="e.g. Bank Account Verified & Active"
+                      value={msgTitle}
+                      onChange={(e) => setMsgTitle(e.target.value)}
+                      required
+                      style={{ fontSize: '12px', padding: '8px 10px' }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: '10px' }}>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '3px' }}>
+                      Message Body
+                    </label>
+                    <textarea
+                      className="app-input-field"
+                      rows={3}
+                      placeholder="Type message for customer..."
+                      value={msgContent}
+                      onChange={(e) => setMsgContent(e.target.value)}
+                      required
+                      style={{ fontSize: '12px', padding: '8px 10px', resize: 'vertical' }}
+                    />
+                  </div>
+
+                  <button type="submit" className="green-action-btn" disabled={msgSending} style={{ padding: '9px', fontSize: '12px' }}>
+                    {msgSending ? 'Sending...' : 'Send Message Now'}
+                  </button>
+                </form>
+
+                <h5 style={{ fontSize: '12px', fontWeight: 800, color: '#082f6e', marginBottom: '6px' }}>Sent Messages ({allNotifs.length})</h5>
+                {allNotifs.length === 0 ? (
+                  <p style={{ color: '#94a3b8', fontSize: '11.5px', textAlign: 'center' }}>No sent notifications yet.</p>
+                ) : (
+                  allNotifs.map(n => (
+                    <div key={n.id} className="admin-record-item" style={{ padding: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <strong style={{ fontSize: '11.5px', color: '#082f6e' }}>{n.title}</strong>
+                        <span style={{ fontSize: '10px', color: '#94a3b8' }}>{new Date(n.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <p style={{ fontSize: '11px', color: '#334155', margin: '2px 0' }}>{n.message}</p>
+                      <span style={{ fontSize: '9.5px', color: '#0369a1', fontWeight: 700 }}>To: {n.user_email || 'All Users'}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            <div style={{ marginTop: '16px', display: 'flex', gap: '8px' }}>
+              <button type="button" onClick={loadAdminData} style={{ flex: 1, padding: '10px', background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                <i className="fas fa-sync-alt"></i> Refresh Data
+              </button>
+              <button type="button" onClick={() => setIsAdminLoggedIn(false)} style={{ flex: 1, padding: '10px', background: '#fee2e2', color: '#b91c1c', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                Logout Admin
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // 1. FRONT SCREEN: LOGIN & SIGNUP (When user is NOT logged in)
   if (!user) {
     return (
@@ -893,371 +1356,6 @@ export default function App() {
             )}
           </div>
         </div>
-
-        {/* Small Admin Button at the bottom of the front Login/SignUp page ONLY */}
-        <div className="small-admin-footer">
-          <button type="button" className="small-admin-btn" onClick={() => { setShowAdminModal(true); if (isAdminLoggedIn) loadAdminData(); }}>
-            <i className="fas fa-shield-halved"></i> Admin Portal
-          </button>
-        </div>
-
-        {/* Admin Login & Management Modal */}
-        {showAdminModal && (
-          <div className="admin-overlay" onClick={() => setShowAdminModal(false)}>
-            <div className="admin-window" onClick={(e) => e.stopPropagation()}>
-              <div className="admin-window-header">
-                <span className="admin-window-title">
-                  <i className="fas fa-shield-halved"></i> Tiranga Pay Admin Portal
-                </span>
-                <button type="button" className="admin-close-btn" onClick={() => setShowAdminModal(false)}>✕</button>
-              </div>
-
-              {!isAdminLoggedIn ? (
-                <form onSubmit={handleAdminLogin} className="admin-content">
-                  <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#082f6e', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px', fontSize: '20px' }}>
-                      <i className="fas fa-lock"></i>
-                    </div>
-                    <h4 style={{ fontWeight: 900, color: '#082f6e' }}>Admin Authentication</h4>
-                  </div>
-
-                  {adminError && (
-                    <div className="auth-alert-box" style={{ background: '#fef2f2', color: '#dc2626' }}>
-                      {adminError}
-                    </div>
-                  )}
-
-                  <div style={{ marginBottom: '14px' }}>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                      Username
-                    </label>
-                    <input
-                      type="text"
-                      className="app-input-field"
-                      placeholder=""
-                      value={adminUser}
-                      onChange={(e) => setAdminUser(e.target.value)}
-                      required
-                      autoComplete="off"
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: '18px' }}>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                      Password
-                    </label>
-                    <input
-                      type="password"
-                      className="app-input-field"
-                      placeholder=""
-                      value={adminPass}
-                      onChange={(e) => setAdminPass(e.target.value)}
-                      required
-                      autoComplete="off"
-                    />
-                  </div>
-
-                  <button type="submit" className="green-action-btn">
-                    Log In to Admin
-                  </button>
-                </form>
-              ) : (
-                <div className="admin-content">
-                  {/* Admin Navigation Tabs */}
-                  <div className="admin-tabs-row">
-                    <button
-                      type="button"
-                      className={`admin-tab-btn ${adminTab === 'users' ? 'active' : ''}`}
-                      onClick={() => setAdminTab('users')}
-                    >
-                      Users ({allUsers.length})
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`admin-tab-btn ${adminTab === 'deposits' ? 'active' : ''}`}
-                      onClick={() => setAdminTab('deposits')}
-                    >
-                      Deposits ({allDeposits.length})
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`admin-tab-btn ${adminTab === 'withdrawals' ? 'active' : ''}`}
-                      onClick={() => setAdminTab('withdrawals')}
-                    >
-                      Withdrawals ({allWithdrawals.length})
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`admin-tab-btn ${adminTab === 'banks' ? 'active' : ''}`}
-                      onClick={() => setAdminTab('banks')}
-                    >
-                      Banks ({allBanks.length})
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`admin-tab-btn ${adminTab === 'messages' ? 'active' : ''}`}
-                      onClick={() => setAdminTab('messages')}
-                    >
-                      Messages
-                    </button>
-                  </div>
-
-                  {/* Tab: Users */}
-                  {adminTab === 'users' && (
-                    <div>
-                      {allUsers.length === 0 ? (
-                        <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>No registered users yet.</p>
-                      ) : (
-                        allUsers.map((u) => (
-                          <div key={u.id} className="admin-record-item">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                              <strong style={{ fontSize: '13px', color: '#082f6e' }}>{u.email}</strong>
-                              <span style={{ fontSize: '12px', fontWeight: 800, color: '#16a34a' }}>₹{Number(u.wallet_balance).toFixed(2)}</span>
-                            </div>
-                            <div style={{ fontSize: '11px', color: '#64748b' }}>
-                              <span>Mobile: {u.phone || 'N/A'}</span> &bull; <span>Invite: {u.invite_code || 'None'}</span>
-                            </div>
-                            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px' }}>
-                              Joined: {new Date(u.created_at).toLocaleString()}
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-
-                  {/* Tab: Deposits */}
-                  {adminTab === 'deposits' && (
-                    <div>
-                      {allDeposits.length === 0 ? (
-                        <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>No deposits submitted.</p>
-                      ) : (
-                        allDeposits.map((d) => (
-                          <div key={d.id} className="admin-record-item">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                              <strong style={{ fontSize: '14px', color: '#082f6e' }}>₹{d.amount} ({d.account_type})</strong>
-                              <span style={{
-                                padding: '2px 8px',
-                                borderRadius: '6px',
-                                fontSize: '10.5px',
-                                fontWeight: 800,
-                                textTransform: 'uppercase',
-                                background: d.status === 'approved' ? '#dcfce7' : d.status === 'rejected' ? '#fee2e2' : '#fef9c3',
-                                color: d.status === 'approved' ? '#15803d' : d.status === 'rejected' ? '#b91c1c' : '#854d0e'
-                              }}>
-                                {d.status}
-                              </span>
-                            </div>
-                            <p style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>UTR: {d.utr_number}</p>
-                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>Date: {new Date(d.created_at).toLocaleString()}</span>
-                            
-                            {d.status === 'pending' && (
-                              <div className="admin-actions-btns">
-                                <button type="button" className="btn-approve" onClick={() => handleApproveDeposit(d)}>
-                                  ✓ Approve & Credit
-                                </button>
-                                <button type="button" className="btn-reject" onClick={() => handleRejectDeposit(d.id)}>
-                                  ✕ Reject
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-
-                  {/* Tab: Withdrawals */}
-                  {adminTab === 'withdrawals' && (
-                    <div>
-                      {allWithdrawals.length === 0 ? (
-                        <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>No withdrawal requests.</p>
-                      ) : (
-                        allWithdrawals.map((w) => (
-                          <div key={w.id} className="admin-record-item">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                              <strong style={{ fontSize: '14px', color: '#082f6e' }}>₹{w.amount}</strong>
-                              <span style={{
-                                padding: '2px 8px',
-                                borderRadius: '6px',
-                                fontSize: '10.5px',
-                                fontWeight: 800,
-                                textTransform: 'uppercase',
-                                background: w.status === 'approved' ? '#dcfce7' : w.status === 'rejected' ? '#fee2e2' : '#fef9c3',
-                                color: w.status === 'approved' ? '#15803d' : w.status === 'rejected' ? '#b91c1c' : '#854d0e'
-                              }}>
-                                {w.status}
-                              </span>
-                            </div>
-                            <p style={{ fontSize: '11px', color: '#334155' }}>Bank: {w.bank_account_info}</p>
-                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>Date: {new Date(w.created_at).toLocaleString()}</span>
-
-                            {w.status === 'pending' && (
-                              <div className="admin-actions-btns">
-                                <button type="button" className="btn-approve" onClick={() => handleApproveWithdrawal(w.id)}>
-                                  ✓ Approve & Mark Paid
-                                </button>
-                                <button type="button" className="btn-reject" onClick={() => handleRejectWithdrawal(w.id)}>
-                                  ✕ Reject
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-
-                  {/* Tab: Banks */}
-                  {adminTab === 'banks' && (
-                    <div>
-                      {allBanks.length === 0 ? (
-                        <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>No bank accounts linked yet.</p>
-                      ) : (
-                        allBanks.map((b) => (
-                          <div key={b.id || b.account_number} className="admin-record-item">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                              <strong style={{ fontSize: '13px', color: '#082f6e' }}>{b.bank_name}</strong>
-                              <span style={{
-                                padding: '2px 8px',
-                                borderRadius: '6px',
-                                fontSize: '10px',
-                                fontWeight: 800,
-                                background: b.status === 'ACTIVE' ? '#dcfce7' : '#fef3c7',
-                                color: b.status === 'ACTIVE' ? '#15803d' : '#b45309'
-                              }}>
-                                {b.status === 'ACTIVE' ? 'ACTIVE' : 'PENDING'}
-                              </span>
-                            </div>
-                            <p style={{ fontSize: '12px', color: '#334155' }}>A/C: {b.account_number} ({b.holder_name})</p>
-                            <span style={{ fontSize: '11px', color: '#64748b' }}>IFSC: {b.ifsc_code}</span>
-                            {b.card_number && (
-                              <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '2px', fontWeight: 700 }}>
-                                ATM Card: •••• •••• •••• {b.card_number.slice(-4)} | Exp: {b.card_expiry || 'N/A'}
-                              </div>
-                            )}
-                            <div className="admin-actions-btns">
-                              {b.status !== 'ACTIVE' ? (
-                                <button
-                                  type="button"
-                                  className="btn-approve"
-                                  onClick={() => handleUpdateBankStatus(b.id!, b.user_id!, 'ACTIVE')}
-                                >
-                                  ✓ Activate (Unlock Deposit QR)
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  style={{ flex: 1, padding: '7px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
-                                  onClick={() => handleUpdateBankStatus(b.id!, b.user_id!, 'PENDING')}
-                                >
-                                  ⏳ Set Pending
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-
-                  {/* Tab: Messages to Customer */}
-                  {adminTab === 'messages' && (
-                    <div>
-                      <form onSubmit={handleSendNotification} style={{ background: '#f1f5f9', padding: '12px', borderRadius: '12px', marginBottom: '14px' }}>
-                        <h5 style={{ fontSize: '12.5px', fontWeight: 800, color: '#082f6e', marginBottom: '8px' }}>
-                          <i className="fa-solid fa-paper-plane"></i> Send Notification to Customer
-                        </h5>
-
-                        <div style={{ marginBottom: '8px' }}>
-                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '3px' }}>
-                            Select Customer
-                          </label>
-                          <select
-                            className="app-input-field"
-                            value={msgTargetUser}
-                            onChange={(e) => setMsgTargetUser(e.target.value)}
-                            style={{ fontSize: '12px', padding: '8px 10px' }}
-                          >
-                            <option value="all">📢 All Customers (Broadcast)</option>
-                            {allUsers.map(u => (
-                              <option key={u.id} value={u.id}>
-                                {u.email} ({u.phone || 'No phone'})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div style={{ marginBottom: '8px' }}>
-                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '3px' }}>
-                            Subject / Title
-                          </label>
-                          <input
-                            type="text"
-                            className="app-input-field"
-                            placeholder="e.g. Bank Account Verified & Active"
-                            value={msgTitle}
-                            onChange={(e) => setMsgTitle(e.target.value)}
-                            required
-                            style={{ fontSize: '12px', padding: '8px 10px' }}
-                          />
-                        </div>
-
-                        <div style={{ marginBottom: '10px' }}>
-                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '3px' }}>
-                            Message Body
-                          </label>
-                          <textarea
-                            className="app-input-field"
-                            rows={3}
-                            placeholder="Type message for customer..."
-                            value={msgContent}
-                            onChange={(e) => setMsgContent(e.target.value)}
-                            required
-                            style={{ fontSize: '12px', padding: '8px 10px', resize: 'vertical' }}
-                          />
-                        </div>
-
-                        <button type="submit" className="green-action-btn" disabled={msgSending} style={{ padding: '9px', fontSize: '12px' }}>
-                          {msgSending ? 'Sending...' : 'Send Message Now'}
-                        </button>
-                      </form>
-
-                      <h5 style={{ fontSize: '12px', fontWeight: 800, color: '#082f6e', marginBottom: '6px' }}>Sent Messages ({allNotifs.length})</h5>
-                      {allNotifs.length === 0 ? (
-                        <p style={{ color: '#94a3b8', fontSize: '11.5px', textAlign: 'center' }}>No sent notifications yet.</p>
-                      ) : (
-                        allNotifs.map(n => (
-                          <div key={n.id} className="admin-record-item" style={{ padding: '8px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <strong style={{ fontSize: '11.5px', color: '#082f6e' }}>{n.title}</strong>
-                              <span style={{ fontSize: '10px', color: '#94a3b8' }}>{new Date(n.created_at).toLocaleDateString()}</span>
-                            </div>
-                            <p style={{ fontSize: '11px', color: '#334155', margin: '2px 0' }}>{n.message}</p>
-                            <span style={{ fontSize: '9.5px', color: '#0369a1', fontWeight: 700 }}>To: {n.user_email || 'All Users'}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-
-                  <div style={{ marginTop: '16px', display: 'flex', gap: '8px' }}>
-                    <button type="button" onClick={loadAdminData} style={{ flex: 1, padding: '9px', background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
-                      <i className="fas fa-sync-alt"></i> Refresh Data
-                    </button>
-                    <button type="button" onClick={() => setIsAdminLoggedIn(false)} style={{ flex: 1, padding: '9px', background: '#fee2e2', color: '#b91c1c', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
-                      Exit Admin
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     )
   }
