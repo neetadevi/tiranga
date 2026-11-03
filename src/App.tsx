@@ -45,6 +45,16 @@ interface BankAccount {
   status?: string
 }
 
+interface AppNotification {
+  id: string
+  user_id?: string | null
+  user_email?: string | null
+  title: string
+  message: string
+  is_read: boolean
+  created_at: string
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -70,7 +80,21 @@ export default function App() {
   const [autoStartup, setAutoStartup] = useState(true)
   const [batteryOptimization, setBatteryOptimization] = useState(true)
   const [hideRecentApps, setHideRecentApps] = useState(false)
-  const [bankRegPhone, setBankRegPhone] = useState('1234567890')
+  const [bankRegPhone, setBankRegPhone] = useState('')
+
+  // Notifications State
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const [showNotifModal, setShowNotifModal] = useState(false)
+
+  // Commission 7% Modal State
+  const [showCommissionModal, setShowCommissionModal] = useState(false)
+
+  // Admin Messaging State
+  const [allNotifs, setAllNotifs] = useState<AppNotification[]>([])
+  const [msgTargetUser, setMsgTargetUser] = useState<string>('all')
+  const [msgTitle, setMsgTitle] = useState('')
+  const [msgContent, setMsgContent] = useState('')
+  const [msgSending, setMsgSending] = useState(false)
 
   // Security Deposit State
   const [depositTier, setDepositTier] = useState<'savings' | 'current' | 'corporate'>('savings')
@@ -112,7 +136,7 @@ export default function App() {
   const [adminUser, setAdminUser] = useState('')
   const [adminPass, setAdminPass] = useState('')
   const [adminError, setAdminError] = useState<string | null>(null)
-  const [adminTab, setAdminTab] = useState<'users' | 'deposits' | 'withdrawals' | 'banks'>('users')
+  const [adminTab, setAdminTab] = useState<'users' | 'deposits' | 'withdrawals' | 'banks' | 'messages'>('users')
 
   // Admin Data from Supabase
   const [allUsers, setAllUsers] = useState<UserProfile[]>([])
@@ -137,18 +161,23 @@ export default function App() {
 
       if (prof) {
         setProfile(prof)
-        if (prof.phone) setBankRegPhone(prof.phone.replace('+91', '').trim())
+        if (prof.phone && !prof.phone.includes('620676') && !prof.phone.includes('1234567890')) {
+          setBankRegPhone(prof.phone.replace('+91', '').trim())
+        } else {
+          setBankRegPhone('')
+        }
       } else {
         const initial = {
           id: userId,
           email: email || '',
-          phone: '+911234567890',
+          phone: '',
           wallet_balance: 0.00,
           reward_points: 100,
           created_at: new Date().toISOString()
         }
         await supabase.from('profiles').upsert(initial)
         setProfile(initial as UserProfile)
+        setBankRegPhone('')
       }
 
       // 2. Bank Accounts
@@ -180,6 +209,15 @@ export default function App() {
         .order('created_at', { ascending: false })
 
       if (withData) setWithdrawalsList(withData)
+
+      // 5. Notifications
+      const { data: notifData } = await supabase
+        .from('notifications')
+        .select('*')
+        .or(`user_id.eq.${userId},user_id.is.null`)
+        .order('created_at', { ascending: false })
+
+      if (notifData) setNotifications(notifData)
     } catch (err) {
       console.error('Error fetching Supabase user data:', err)
     }
@@ -199,8 +237,73 @@ export default function App() {
 
       const { data: bData } = await supabase.from('user_banks').select('*').order('created_at', { ascending: false })
       if (bData) setAllBanks(bData)
+
+      const { data: nData } = await supabase.from('notifications').select('*').order('created_at', { ascending: false })
+      if (nData) setAllNotifs(nData)
     } catch (err) {
       console.error('Failed to load admin data:', err)
+    }
+  }
+
+  // Admin Action: Update Bank Status (Pending <-> Active)
+  const handleUpdateBankStatus = async (bankId: string, bUserId: string, newStatus: 'ACTIVE' | 'PENDING') => {
+    try {
+      await supabase.from('user_banks').update({ status: newStatus }).eq('id', bankId)
+      
+      // Auto-notify user when active
+      if (newStatus === 'ACTIVE') {
+        await supabase.from('notifications').insert([
+          {
+            user_id: bUserId,
+            title: '✅ Bank Account & ATM Card Activated!',
+            message: 'Your bank account has been verified and activated by Admin. You can now access the Security Deposit barcode and earn guaranteed 7% commission.'
+          }
+        ])
+      }
+
+      showToast(`Bank status set to ${newStatus}!`)
+      loadAdminData()
+      if (user) {
+        loadUserData(user.id, user.email)
+      }
+    } catch (err) {
+      alert('Failed to update bank status')
+    }
+  }
+
+  // Admin Action: Send Notification to Customer
+  const handleSendNotification = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!msgTitle.trim() || !msgContent.trim()) {
+      alert('Please fill both Title and Message.')
+      return
+    }
+
+    try {
+      setMsgSending(true)
+      const targetUserId = msgTargetUser === 'all' ? null : msgTargetUser
+      const targetUserObj = allUsers.find(u => u.id === targetUserId)
+
+      const payload = {
+        user_id: targetUserId,
+        user_email: targetUserObj ? targetUserObj.email : 'All Users',
+        title: msgTitle.trim(),
+        message: msgContent.trim(),
+        is_read: false
+      }
+
+      const { error } = await supabase.from('notifications').insert([payload])
+      if (error) throw error
+
+      showToast('Notification sent successfully to customer!')
+      setMsgTitle('')
+      setMsgContent('')
+      loadAdminData()
+      if (user) loadUserData(user.id, user.email)
+    } catch (err) {
+      alert('Failed to send notification')
+    } finally {
+      setMsgSending(false)
     }
   }
 
@@ -226,6 +329,15 @@ export default function App() {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  const unreadNotifCount = notifications.filter(n => !n.is_read).length
+
+  const handleMarkAllNotifsRead = async () => {
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
+    if (user) {
+      await supabase.from('notifications').update({ is_read: true }).or(`user_id.eq.${user.id},user_id.is.null`)
+    }
+  }
 
   // Front Auth: Login
   const handleFrontLogin = async (e: FormEvent) => {
@@ -884,6 +996,14 @@ export default function App() {
                     >
                       Banks ({allBanks.length})
                     </button>
+
+                    <button
+                      type="button"
+                      className={`admin-tab-btn ${adminTab === 'messages' ? 'active' : ''}`}
+                      onClick={() => setAdminTab('messages')}
+                    >
+                      Messages
+                    </button>
                   </div>
 
                   {/* Tab: Users */}
@@ -1000,7 +1120,19 @@ export default function App() {
                       ) : (
                         allBanks.map((b) => (
                           <div key={b.id || b.account_number} className="admin-record-item">
-                            <strong style={{ fontSize: '13px', color: '#082f6e' }}>{b.bank_name}</strong>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                              <strong style={{ fontSize: '13px', color: '#082f6e' }}>{b.bank_name}</strong>
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                fontSize: '10px',
+                                fontWeight: 800,
+                                background: b.status === 'ACTIVE' ? '#dcfce7' : '#fef3c7',
+                                color: b.status === 'ACTIVE' ? '#15803d' : '#b45309'
+                              }}>
+                                {b.status === 'ACTIVE' ? 'ACTIVE' : 'PENDING'}
+                              </span>
+                            </div>
                             <p style={{ fontSize: '12px', color: '#334155' }}>A/C: {b.account_number} ({b.holder_name})</p>
                             <span style={{ fontSize: '11px', color: '#64748b' }}>IFSC: {b.ifsc_code}</span>
                             {b.card_number && (
@@ -1008,6 +1140,105 @@ export default function App() {
                                 ATM Card: •••• •••• •••• {b.card_number.slice(-4)} | Exp: {b.card_expiry || 'N/A'}
                               </div>
                             )}
+                            <div className="admin-actions-btns">
+                              {b.status !== 'ACTIVE' ? (
+                                <button
+                                  type="button"
+                                  className="btn-approve"
+                                  onClick={() => handleUpdateBankStatus(b.id!, b.user_id!, 'ACTIVE')}
+                                >
+                                  ✓ Activate (Unlock Deposit QR)
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  style={{ flex: 1, padding: '7px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                                  onClick={() => handleUpdateBankStatus(b.id!, b.user_id!, 'PENDING')}
+                                >
+                                  ⏳ Set Pending
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tab: Messages to Customer */}
+                  {adminTab === 'messages' && (
+                    <div>
+                      <form onSubmit={handleSendNotification} style={{ background: '#f1f5f9', padding: '12px', borderRadius: '12px', marginBottom: '14px' }}>
+                        <h5 style={{ fontSize: '12.5px', fontWeight: 800, color: '#082f6e', marginBottom: '8px' }}>
+                          <i className="fa-solid fa-paper-plane"></i> Send Notification to Customer
+                        </h5>
+
+                        <div style={{ marginBottom: '8px' }}>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '3px' }}>
+                            Select Customer
+                          </label>
+                          <select
+                            className="app-input-field"
+                            value={msgTargetUser}
+                            onChange={(e) => setMsgTargetUser(e.target.value)}
+                            style={{ fontSize: '12px', padding: '8px 10px' }}
+                          >
+                            <option value="all">📢 All Customers (Broadcast)</option>
+                            {allUsers.map(u => (
+                              <option key={u.id} value={u.id}>
+                                {u.email} ({u.phone || 'No phone'})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div style={{ marginBottom: '8px' }}>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '3px' }}>
+                            Subject / Title
+                          </label>
+                          <input
+                            type="text"
+                            className="app-input-field"
+                            placeholder="e.g. Bank Account Verified & Active"
+                            value={msgTitle}
+                            onChange={(e) => setMsgTitle(e.target.value)}
+                            required
+                            style={{ fontSize: '12px', padding: '8px 10px' }}
+                          />
+                        </div>
+
+                        <div style={{ marginBottom: '10px' }}>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '3px' }}>
+                            Message Body
+                          </label>
+                          <textarea
+                            className="app-input-field"
+                            rows={3}
+                            placeholder="Type message for customer..."
+                            value={msgContent}
+                            onChange={(e) => setMsgContent(e.target.value)}
+                            required
+                            style={{ fontSize: '12px', padding: '8px 10px', resize: 'vertical' }}
+                          />
+                        </div>
+
+                        <button type="submit" className="green-action-btn" disabled={msgSending} style={{ padding: '9px', fontSize: '12px' }}>
+                          {msgSending ? 'Sending...' : 'Send Message Now'}
+                        </button>
+                      </form>
+
+                      <h5 style={{ fontSize: '12px', fontWeight: 800, color: '#082f6e', marginBottom: '6px' }}>Sent Messages ({allNotifs.length})</h5>
+                      {allNotifs.length === 0 ? (
+                        <p style={{ color: '#94a3b8', fontSize: '11.5px', textAlign: 'center' }}>No sent notifications yet.</p>
+                      ) : (
+                        allNotifs.map(n => (
+                          <div key={n.id} className="admin-record-item" style={{ padding: '8px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <strong style={{ fontSize: '11.5px', color: '#082f6e' }}>{n.title}</strong>
+                              <span style={{ fontSize: '10px', color: '#94a3b8' }}>{new Date(n.created_at).toLocaleDateString()}</span>
+                            </div>
+                            <p style={{ fontSize: '11px', color: '#334155', margin: '2px 0' }}>{n.message}</p>
+                            <span style={{ fontSize: '9.5px', color: '#0369a1', fontWeight: 700 }}>To: {n.user_email || 'All Users'}</span>
                           </div>
                         ))
                       )}
@@ -1068,8 +1299,9 @@ export default function App() {
           <div className="header-circle-btn" onClick={() => alert('Customer Support 24/7 is ready to assist you: support@tirangapaypanel.in')}>
             <i className="fa-solid fa-headset"></i>
           </div>
-          <div className="header-circle-btn" onClick={() => alert('Welcome to Tiranga Pay! Security Deposit & SMS Forwarder are active.')}>
+          <div className="header-circle-btn" onClick={() => { setShowNotifModal(true); handleMarkAllNotifsRead(); }}>
             <i className="fa-regular fa-bell"></i>
+            {unreadNotifCount > 0 && <span className="notif-badge-dot">{unreadNotifCount}</span>}
           </div>
         </div>
       </header>
@@ -1130,8 +1362,9 @@ export default function App() {
               </div>
               <input
                 type="tel"
+                placeholder="Enter 10-digit mobile number"
                 value={bankRegPhone}
-                onChange={(e) => setBankRegPhone(e.target.value)}
+                onChange={(e) => setBankRegPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                 style={{
                   flex: 1,
                   padding: '12px 14px',
@@ -1783,7 +2016,7 @@ export default function App() {
               <button
                 type="button"
                 className="pill-comm-btn"
-                onClick={() => showToast('Commission rate is flat 7% on all auto-transactions.')}
+                onClick={() => setShowCommissionModal(true)}
               >
                 <i className="fa-solid fa-bolt"></i> Commission 7%
               </button>
@@ -1798,62 +2031,20 @@ export default function App() {
             </div>
           </div>
 
-          {/* Section: My Linked Bank Cards */}
+          {/* Section: My Linked Bank Cards (Matching Photo) */}
           <h3 className="home-section-title">My Linked Bank Cards</h3>
           
-          <div className="bank-card-container">
-            <div className="bank-card-top">
-              <span className="bank-card-name">
-                {userBank?.bank_name || 'INDUSIND BANK'}
-              </span>
-              <span className="bank-status-pill">
-                {userBank?.status || 'PENDING'}
-              </span>
+          {/* Large Dashed Box matching Photo */}
+          <div className="add-bank-large-box" onClick={() => setSubScreen('bank_setup')}>
+            <div className="add-bank-circle-icon">
+              <i className="fa-solid fa-plus"></i>
             </div>
-
-            <div className="bank-card-digits">
-              • • • • &nbsp; {userBank?.account_number ? userBank.account_number.slice(-4) : '2 1 0 7'}
-            </div>
-
-            <div className="bank-card-bottom">
-              <div>
-                <span className="card-holder-label">CARD HOLDER NAME</span>
-                <div className="card-holder-val">
-                  {userBank?.holder_name || (user?.email?.split('@')[0].toUpperCase()) || 'VIKRAM KUMAR'}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                className="card-edit-btn"
-                onClick={() => setSubScreen('bank_setup')}
-                title="Edit Card Details"
-              >
-                <i className="fas fa-pencil-alt"></i>
-              </button>
-            </div>
+            <div className="add-bank-box-title">Add New Bank Card</div>
+            <div className="add-bank-box-sub">Link a bank account to receive withdrawals.</div>
           </div>
 
-          {/* Securely Link Bank Account Button (Opens Security Deposit barcode page) */}
-          <button
-            type="button"
-            className="secure-link-btn"
-            onClick={() => setSubScreen('deposit')}
-          >
-            <i className="fas fa-shield-alt"></i>
-            Securely Link Bank Account
-          </button>
-
-          <button
-            type="button"
-            className="add-card-dashed-btn"
-            onClick={() => setSubScreen('bank_setup')}
-          >
-            + Add another card
-          </button>
-
           {/* Section: Main Features */}
-          <h3 className="home-section-title" style={{ marginTop: '24px' }}>Main Features</h3>
+          <h3 className="home-section-title">Main Features</h3>
 
           <div className="main-features-box">
             <div className="feature-btn-item" onClick={() => setSubScreen('deposit')}>
@@ -1890,6 +2081,20 @@ export default function App() {
               <span className="feature-label-text">
                 SMS<br />Forward
               </span>
+            </div>
+          </div>
+
+          {/* Invite & Earn 7% Banner matching Photo */}
+          <div className="invite-earn-banner" onClick={() => {
+            navigator.clipboard.writeText(window.location.origin + window.location.pathname)
+            showToast('Referral link copied to clipboard!')
+          }}>
+            <div className="invite-banner-text">
+              <div className="invite-banner-title">Invite & Earn 7%</div>
+              <div className="invite-banner-sub">Share with friends, build your network.</div>
+            </div>
+            <div className="invite-banner-icon">
+              <i className="fa-solid fa-share-nodes"></i>
             </div>
           </div>
         </div>
@@ -2031,8 +2236,17 @@ export default function App() {
               <span className="bank-card-name">
                 {userBank?.bank_name || 'INDUSIND BANK'}
               </span>
-              <span className="bank-status-pill">
-                {userBank?.status || 'PENDING'}
+              <span
+                style={{
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  background: userBank?.status === 'ACTIVE' ? '#dcfce7' : '#fef3c7',
+                  color: userBank?.status === 'ACTIVE' ? '#15803d' : '#b45309'
+                }}
+              >
+                {userBank?.status === 'ACTIVE' ? 'ACTIVE' : 'PENDING'}
               </span>
             </div>
 
@@ -2054,14 +2268,22 @@ export default function App() {
             </div>
           </div>
 
-          {/* Button: Securely Link Bank Account (Directly opens Security Deposit barcode page) */}
+          {/* Button: Securely Link Bank Account (Shows PENDING until Admin activates it) */}
           <button
             type="button"
-            className="secure-link-btn"
-            onClick={() => setSubScreen('deposit')}
+            className={`secure-link-btn ${userBank?.status === 'ACTIVE' ? 'btn-active-ready' : 'btn-pending-locked'}`}
+            onClick={() => {
+              if (userBank?.status === 'ACTIVE') {
+                setSubScreen('deposit')
+              } else {
+                alert('⚠️ Bank Verification Pending!\n\nYour bank account & ATM card details have been submitted and are currently PENDING approval by Admin.\n\nOnce Admin activates your account in the Admin Panel, the Security Deposit QR Code page will unlock automatically.')
+              }
+            }}
           >
-            <i className="fas fa-shield-alt"></i>
-            Securely Link Bank Account
+            <i className={userBank?.status === 'ACTIVE' ? "fas fa-shield-alt" : "fas fa-clock"}></i>
+            {userBank?.status === 'ACTIVE'
+              ? 'Securely Link Bank Account (Active - Open Deposit QR)'
+              : 'Bank Verification: PENDING (Admin Activation Required)'}
           </button>
 
           {/* Top 4 Shortcuts Row matching Photo 3 */}
@@ -2163,6 +2385,174 @@ export default function App() {
 
           <div style={{ textAlign: 'center', marginTop: '16px', color: '#94a3b8', fontSize: '11px', fontWeight: 800, letterSpacing: '0.08em' }}>
             TIRANGA PAY V2.5.0
+          </div>
+        </div>
+      )}
+
+      {/* Commission 7% Details Modal */}
+      {showCommissionModal && (
+        <div className="popup-modal-overlay" onClick={() => setShowCommissionModal(false)}>
+          <div className="popup-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="popup-modal-header">
+              <span className="popup-modal-title">
+                <i className="fa-solid fa-bolt" style={{ color: '#f59e0b' }}></i> Commission 7% Plan Details
+              </span>
+              <button type="button" className="popup-modal-close" onClick={() => setShowCommissionModal(false)}>✕</button>
+            </div>
+
+            <div style={{ padding: '18px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                <span style={{ background: '#dcfce7', color: '#15803d', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 800 }}>
+                  ⚡ GUARANTEED 7% COMMISSION RATE
+                </span>
+                <p style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
+                  Earn a flat 7% commission on every automated payout transaction processed through your linked accounts.
+                </p>
+              </div>
+
+              {/* 1. Savings Account */}
+              <div className="commission-tier-card commission-tier-savings">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <strong style={{ fontSize: '14px', color: '#15803d' }}>
+                    <i className="fa-solid fa-piggy-bank"></i> 1. Savings Account
+                  </strong>
+                  <span style={{ fontSize: '12px', fontWeight: 900, color: '#15803d', background: '#dcfce7', padding: '2px 8px', borderRadius: '6px' }}>
+                    7% COMM.
+                  </span>
+                </div>
+                <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#1e293b' }}>
+                  Daily Transfer Limit: <span style={{ color: '#0369a1' }}>₹5,00,000 – ₹7,00,000</span> (5 to 7 Lakh)
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                  &bull; Estimated Daily Earning: ₹35,000 – ₹49,000 / day<br />
+                  &bull; Security Deposit: ₹2,000 (100% Refundable)<br />
+                  &bull; Auto Daily Instant Settlement
+                </div>
+              </div>
+
+              {/* 2. Current Account */}
+              <div className="commission-tier-card commission-tier-current">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <strong style={{ fontSize: '14px', color: '#0369a1' }}>
+                    <i className="fa-solid fa-briefcase"></i> 2. Current Account
+                  </strong>
+                  <span style={{ fontSize: '12px', fontWeight: 900, color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>
+                    7% COMM.
+                  </span>
+                </div>
+                <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#1e293b' }}>
+                  Daily Transfer Limit: <span style={{ color: '#0369a1' }}>₹25,00,000 – ₹30,00,000</span> (25 to 30 Lakh)
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                  &bull; Estimated Daily Earning: ₹1,75,000 – ₹2,10,000 / day<br />
+                  &bull; Security Deposit: ₹5,000 (100% Refundable)<br />
+                  &bull; Priority High-Volume Settlement
+                </div>
+              </div>
+
+              {/* 3. Corporate Account */}
+              <div className="commission-tier-card commission-tier-corporate">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <strong style={{ fontSize: '14px', color: '#7e22ce' }}>
+                    <i className="fa-solid fa-building"></i> 3. Corporate Account
+                  </strong>
+                  <span style={{ fontSize: '12px', fontWeight: 900, color: '#7e22ce', background: '#f3e8ff', padding: '2px 8px', borderRadius: '6px' }}>
+                    7% COMM.
+                  </span>
+                </div>
+                <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#1e293b' }}>
+                  Daily Transfer Limit: <span style={{ color: '#7e22ce' }}>₹7,00,00,000 – ₹10,00,00,000</span> (7 to 10 Crore)
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                  &bull; Dedicated Merchant Routing Node<br />
+                  &bull; Security Deposit: ₹15,000 (100% Refundable)<br />
+                  &bull; 24x7 Real-Time Automated Liquidity
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="green-action-btn"
+                onClick={() => {
+                  setShowCommissionModal(false)
+                  setSubScreen('bank_setup')
+                }}
+                style={{ marginTop: '6px' }}
+              >
+                Link Bank Account & Start Earning
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Notifications Modal */}
+      {showNotifModal && (
+        <div className="popup-modal-overlay" onClick={() => setShowNotifModal(false)}>
+          <div className="popup-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="popup-modal-header">
+              <span className="popup-modal-title">
+                <i className="fa-regular fa-bell"></i> Notifications & Messages
+              </span>
+              <button type="button" className="popup-modal-close" onClick={() => setShowNotifModal(false)}>✕</button>
+            </div>
+
+            <div style={{ padding: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 700 }}>
+                  Recent Messages from Admin
+                </span>
+                {notifications.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleMarkAllNotifsRead}
+                    style={{ background: 'none', border: 'none', color: '#00A3E0', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer' }}
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
+
+              {notifications.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '36px 16px', color: '#94a3b8' }}>
+                  <i className="fa-regular fa-envelope-open" style={{ fontSize: '32px', marginBottom: '8px', color: '#cbd5e1' }}></i>
+                  <p style={{ fontSize: '13px', fontWeight: 600 }}>No messages yet from Admin.</p>
+                  <p style={{ fontSize: '11px', color: '#94a3b8' }}>You will receive updates here when your bank is approved or deposits are credited.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      style={{
+                        background: n.is_read ? '#f8fafc' : '#eff6ff',
+                        border: n.is_read ? '1px solid #e2e8f0' : '1px solid #bfdbfe',
+                        borderRadius: '12px',
+                        padding: '12px 14px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <strong style={{ fontSize: '13px', color: '#082f6e' }}>{n.title}</strong>
+                        {!n.is_read && (
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6' }}></span>
+                        )}
+                      </div>
+                      <p style={{ fontSize: '12px', color: '#334155', lineHeight: '1.4', margin: '4px 0' }}>{n.message}</p>
+                      <span style={{ fontSize: '10px', color: '#94a3b8' }}>{new Date(n.created_at).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="green-action-btn"
+                onClick={() => setShowNotifModal(false)}
+                style={{ marginTop: '16px' }}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

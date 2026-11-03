@@ -1331,3 +1331,215 @@ input:checked + .slider-round:before {
   font-weight: 800;
   cursor: pointer;
 }
+
+/* Add New Bank Card Large Box matching user screenshot */
+.add-bank-large-box {
+  border: 1.5px dashed #00A3E0;
+  background: #f0faff;
+  border-radius: 16px;
+  padding: 28px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 22px;
+}
+
+.add-bank-large-box:hover {
+  background: #e6f6fd;
+  border-color: #0284c7;
+}
+
+.add-bank-circle-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #00A3E0;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  margin: 0 auto 12px;
+  box-shadow: 0 4px 12px rgba(0, 163, 224, 0.35);
+}
+
+.add-bank-box-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #082f6e;
+  margin-bottom: 4px;
+}
+
+.add-bank-box-sub {
+  font-size: 12.5px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* Invite & Earn 7% Banner matching user screenshot */
+.invite-earn-banner {
+  background: linear-gradient(90deg, #ff7a18 0%, #ff4646 100%);
+  border-radius: 14px;
+  padding: 16px 18px;
+  color: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 18px;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(255, 70, 70, 0.28);
+  transition: transform 0.15s ease;
+}
+
+.invite-earn-banner:active {
+  transform: scale(0.98);
+}
+
+.invite-banner-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.invite-banner-sub {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  margin-top: 3px;
+  font-weight: 500;
+}
+
+.invite-banner-icon {
+  font-size: 22px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 10px;
+}
+
+/* Header Notification Badge */
+.header-circle-btn {
+  position: relative;
+}
+
+.notif-badge-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 1px 5px;
+  border-radius: 10px;
+  min-width: 16px;
+  text-align: center;
+  line-height: 14px;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.4);
+}
+
+/* Modal Popup Styles */
+.popup-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(6px);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.popup-modal-card {
+  width: 100%;
+  max-width: 440px;
+  max-height: 88vh;
+  background: #ffffff;
+  border-radius: 20px;
+  overflow-y: auto;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  animation: modalPop 0.2s ease-out;
+}
+
+@keyframes modalPop {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.popup-modal-header {
+  background: #082f6e;
+  color: #ffffff;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.popup-modal-title {
+  font-size: 16px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.popup-modal-close {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: #ffffff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.commission-tier-card {
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+  background: #f8fafc;
+}
+
+.commission-tier-savings {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.commission-tier-current {
+  border-color: #bae6fd;
+  background: #f0f9ff;
+}
+
+.commission-tier-corporate {
+  border-color: #f5d0fe;
+  background: #faf5ff;
+}
+
+/* Status Badges */
+.badge-pending {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.badge-active {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.btn-active-ready {
+  background: linear-gradient(135deg, #16a34a, #15803d) !important;
+}
+
+.btn-pending-locked {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+  cursor: pointer;
+}
