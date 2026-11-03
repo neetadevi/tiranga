@@ -2,9 +2,20 @@ import { useState, useEffect, type FormEvent } from 'react'
 import { supabase } from './lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
+interface UserProfile {
+  id: string
+  email: string | null
+  phone: string | null
+  invite_code: string | null
+  wallet_balance: number
+  reward_points: number
+  created_at: string
+}
+
 export default function App() {
   const [tab, setTab] = useState<'login' | 'signup'>('login')
   const [user, setUser] = useState<User | null>(null)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
 
@@ -21,16 +32,58 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
+  // Fetch user profile from Supabase
+  const loadProfile = async (userId: string, userEmail?: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle()
+
+      if (error) {
+        console.warn('Error loading profile from Supabase:', error.message)
+      }
+
+      if (data) {
+        setProfile(data)
+      } else {
+        // Fallback upsert if trigger was delayed
+        const newProfile = {
+          id: userId,
+          email: userEmail || '',
+          wallet_balance: 0.00,
+          reward_points: 100,
+          created_at: new Date().toISOString()
+        }
+        await supabase.from('profiles').upsert(newProfile)
+        setProfile(newProfile as UserProfile)
+      }
+    } catch (err) {
+      console.error('Failed to sync profile with Supabase:', err)
+    }
+  }
+
   useEffect(() => {
     // Check initial auth session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
+      const currentUser = session?.user ?? null
+      setUser(currentUser)
+      if (currentUser) {
+        loadProfile(currentUser.id, currentUser.email)
+      }
       setInitialLoading(false)
     })
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const currentUser = session?.user ?? null
+      setUser(currentUser)
+      if (currentUser) {
+        loadProfile(currentUser.id, currentUser.email)
+      } else {
+        setProfile(null)
+      }
     })
 
     return () => subscription.unsubscribe()
@@ -68,6 +121,13 @@ export default function App() {
 
       if (data.user) {
         setUser(data.user)
+        // Update last login in Supabase profiles
+        await supabase
+          .from('profiles')
+          .update({ last_login_at: new Date().toISOString() })
+          .eq('id', data.user.id)
+
+        await loadProfile(data.user.id, data.user.email)
         setSuccessMsg('Login successful! Welcome back.')
       }
     } catch (err: unknown) {
@@ -99,13 +159,17 @@ export default function App() {
 
     try {
       setLoading(true)
+      const cleanPhone = phone.trim()
+      const cleanInvite = inviteCode.trim().toUpperCase()
+
+      // Sign up user in Supabase Auth with metadata
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password: password,
         options: {
           data: {
-            phone: phone.trim() || undefined,
-            invite_code: inviteCode.trim() || undefined,
+            phone: cleanPhone || null,
+            invite_code: cleanInvite || null,
           },
         },
       })
@@ -114,11 +178,23 @@ export default function App() {
         throw error
       }
 
-      if (data.session) {
-        setUser(data.session.user)
-        setSuccessMsg('Account registered and logged in successfully!')
-      } else if (data.user) {
-        setSuccessMsg('Registration successful! Please check your email to confirm your account.')
+      if (data.user) {
+        // Also ensure data is written to Supabase public.profiles table
+        const profilePayload = {
+          id: data.user.id,
+          email: data.user.email,
+          phone: cleanPhone || null,
+          invite_code: cleanInvite || null,
+          wallet_balance: 0.00,
+          reward_points: 100,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+
+        await supabase.from('profiles').upsert(profilePayload)
+        setUser(data.user)
+        setProfile(profilePayload as UserProfile)
+        setSuccessMsg('Account registered and profile saved in Supabase!')
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Registration failed'
@@ -132,6 +208,7 @@ export default function App() {
     setLoading(true)
     await supabase.auth.signOut()
     setUser(null)
+    setProfile(null)
     setLoading(false)
     resetForm()
   }
@@ -140,7 +217,7 @@ export default function App() {
     return (
       <div className="app-container" style={{ textAlign: 'center', padding: '40px' }}>
         <div className="spinner" style={{ margin: '0 auto 16px', width: '32px', height: '32px' }}></div>
-        <p style={{ color: 'var(--text-muted)' }}>Connecting to Tiranga...</p>
+        <p style={{ color: 'var(--text-muted)' }}>Connecting to Tiranga & Supabase...</p>
       </div>
     )
   }
@@ -175,17 +252,36 @@ export default function App() {
               {(user.email?.[0] || 'T').toUpperCase()}
             </div>
             <div className="profile-email">{user.email}</div>
-            <span className="profile-badge">● Active Member</span>
+            <span className="profile-badge">● Active Member (Supabase Synced)</span>
 
             <div className="wallet-box">
               <div className="wallet-item">
-                <span className="wallet-label">Available Balance</span>
-                <span className="wallet-value">₹0.00</span>
+                <span className="wallet-label">Wallet Balance</span>
+                <span className="wallet-value">₹{(profile?.wallet_balance ?? 0).toFixed(2)}</span>
               </div>
               <div style={{ width: '1px', background: 'rgba(255,255,255,0.1)', height: '36px' }}></div>
               <div className="wallet-item">
                 <span className="wallet-label">Reward Points</span>
-                <span className="wallet-value">100 pts</span>
+                <span className="wallet-value">{profile?.reward_points ?? 100} pts</span>
+              </div>
+            </div>
+
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              borderRadius: '12px',
+              padding: '12px',
+              marginBottom: '18px',
+              fontSize: '0.8rem',
+              color: 'var(--text-muted)',
+              textAlign: 'left'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span>Mobile:</span>
+                <span style={{ color: '#fff', fontWeight: 600 }}>{profile?.phone || 'Not provided'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Invite Code:</span>
+                <span style={{ color: '#fb923c', fontWeight: 600 }}>{profile?.invite_code || 'None'}</span>
               </div>
             </div>
 
@@ -259,7 +355,7 @@ export default function App() {
             {tab === 'login' ? (
               <form onSubmit={handleLogin}>
                 <div className="form-group">
-                  <label className="form-label">Email or Username</label>
+                  <label className="form-label">Email Address</label>
                   <div className="input-wrapper">
                     <span className="input-icon">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -331,7 +427,7 @@ export default function App() {
                     className="forgot-link"
                     onClick={(e) => {
                       e.preventDefault()
-                      alert('To reset password, enter your email and request password reset via Supabase.')
+                      alert('Password recovery: Enter your registered email to receive a reset link.')
                     }}
                   >
                     Forgot password?
@@ -372,7 +468,7 @@ export default function App() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Phone Number (Optional)</label>
+                  <label className="form-label">Phone Number (Stored in Supabase)</label>
                   <div className="input-wrapper">
                     <span className="input-icon">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -430,7 +526,7 @@ export default function App() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Invitation / Referral Code (Optional)</label>
+                  <label className="form-label">Invitation / Referral Code</label>
                   <div className="input-wrapper">
                     <span className="input-icon">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -452,7 +548,7 @@ export default function App() {
                   {loading ? (
                     <>
                       <div className="spinner"></div>
-                      <span>Creating Account...</span>
+                      <span>Saving to Supabase...</span>
                     </>
                   ) : (
                     <span>Register Account</span>
@@ -472,4 +568,3 @@ export default function App() {
     </div>
   )
 }
-
