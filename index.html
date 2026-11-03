@@ -11,7 +11,19 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-    <script type="module" crossorigin src="./assets/index-BRXJAXUr.js"></script>
+    <script type="text/javascript">
+      // Decode redirected path from 404.html for GitHub Pages SPA
+      (function() {
+        var query = window.location.search;
+        if (query.indexOf('?p=') !== -1) {
+          var p = decodeURIComponent(query.slice(3).split('&')[0]);
+          if (p.toLowerCase().indexOf('admin') !== -1) {
+            window.history.replaceState(null, null, window.location.pathname.replace(/\/$/, '') + '/admin');
+          }
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-CsNZUkSF.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-RSddhMta.css">
   </head>
   <body>
